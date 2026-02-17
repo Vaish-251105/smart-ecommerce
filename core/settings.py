@@ -40,7 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     
     
-    'products',
+
     'orders',
     'memberships',
     'ai_features',
@@ -87,7 +87,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'student_ecommerce_db',
+        'NAME': 'smart_ecommerce_db',
         'USER': 'root',
         'PASSWORD': 'Vaish@123',
         'HOST': 'localhost',

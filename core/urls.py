@@ -9,15 +9,12 @@ urlpatterns = [
     path('admin/', admin.site.urls),
 
     # Users / Accounts
-    path('api/users/', include('accounts.urls')),   # or 'users.urls' if your app name is users
+    path('api/users/', include('accounts.urls')),
 
-    # Products
-    path('api/', include('products.urls')),
+    # Store
+    path('api/', include('store.urls')),
 
-    # Store / Cart (if you have it)
-    path('api/store/', include('store.urls')),
-
-    # JWT Token
+    # JWT
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

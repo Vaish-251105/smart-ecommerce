@@ -1,5 +1,5 @@
 from django.db import models
-from products.models import Product
+from store.models import Product
 from users.models import AppUser
 from django.conf import settings
 

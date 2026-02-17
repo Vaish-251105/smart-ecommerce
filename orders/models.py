@@ -1,6 +1,6 @@
 from django.db import models
 from users.models import ConsumerProfile
-from products.models import Product
+from store.models import Product
 # Create your models here.
 
 class Order(models.Model):
