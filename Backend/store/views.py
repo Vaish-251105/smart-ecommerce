@@ -13,17 +13,40 @@ from rest_framework.views import APIView
 
 # Create your views here.
 class ProductListAPIView(ListCreateAPIView):
+ queryset = Product.objects.all()
+ serializer_class = ProductSerializer
+ permission_classes = [IsAuthenticatedOrReadOnly]
+
+ filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+
+ filterset_fields = ['category']
+ search_fields = ['name', 'description']
+ ordering_fields = ['price', 'created_at']
+
+def get_queryset(self):
     queryset = Product.objects.all()
-    serializer_class = ProductSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['category', 'price']
-    search_fields = ['name', 'description']
-    ordering_fields = ['price', 'created_at']
+
+    category = self.request.query_params.get('category')
+    search = self.request.query_params.get('search')
+
+    if category:
+        queryset = queryset.filter(category__iexact=category)
+
+    if search:
+        queryset = queryset.filter(name__icontains=search)
+
+    return queryset
 
 class ProductDetailApi(RetrieveUpdateDestroyAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+
+class RecentProductsAPIView(APIView):
+
+    def get(self, request):
+        products = Product.objects.order_by("-id")[:5]
+        serializer = ProductSerializer(products, many=True)
+        return Response(serializer.data)
 
 class CategoryListCreateAPIView(ListCreateAPIView):
     queryset = Category.objects.all()

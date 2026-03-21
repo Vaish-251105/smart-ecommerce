@@ -1,7 +1,9 @@
+from accounts import serializers
+from store.serializers import ProductSerializer 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from store.models import Cart, CartItem
+from store.models import Cart, CartItem, Product
 from .models import Order, OrderItem, Payment
 from .serializers import OrderSerializer
 from rest_framework.generics import ListAPIView
@@ -9,7 +11,8 @@ from reportlab.pdfgen import canvas
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 import stripe
-from django.conf import settings    
+from django.conf import settings   
+
 
 class CheckoutAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -95,9 +98,9 @@ class MakePaymentView(APIView):
             order.status = "PAID"
             order.save()
 
-            return Response({"message": "Payment successful"})
             return Response({
-                "client_secret": payment_intent.client_secret
+                "client_secret": payment_intent.client_secret,
+                "message": "Payment successful"
             })
 
         except Order.DoesNotExist:
@@ -136,3 +139,42 @@ def generate_invoice(request, order_id):
     p.save()
 
     return response
+
+
+class TrackOrderAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, order_id):
+        try:
+            order = Order.objects.get(id=order_id, user=request.user)
+
+            return Response({
+                "order_id": order.id,
+                "status": order.status,
+                "is_paid": order.is_paid,
+                "total_price": order.total_price
+            })
+
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found"})
+
+class UpdateOrderStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, order_id):
+        try:
+            order = Order.objects.get(id=order_id)
+
+            new_status = request.data.get("status")
+
+            order.status = new_status
+            order.save()
+
+            return Response({
+                "message": "Order status updated",
+                "order_id": order.id,
+                "new_status": order.status
+            })
+
+        except Order.DoesNotExist:
+            return Response({"error": "Order not found"}, status=404)

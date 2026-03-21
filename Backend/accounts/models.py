@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 class Membership(models.Model):
 
     MEMBERSHIP_CHOICES = (
-        ('STUDENT', 'Student'),
+        ('CUSTOMER', 'Customer'),
         ('NORMAL', 'Normal'),
     )
 
