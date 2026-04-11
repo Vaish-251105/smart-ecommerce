@@ -83,19 +83,44 @@ def send_whatsapp_notification(to_phone, message):
 def trigger_all_notifications(user, title, message, channels=['In-App', 'Email', 'SMS', 'WhatsApp']):
     """
     Triggers notifications across multiple channels.
+    Accepts either a User (auth) or AppUser object.
     """
+    from django.contrib.auth.models import User
+    from .models import AppUser
+
+    # Identify AppUser and auth User
+    app_user = None
+    auth_user = None
+
+    if isinstance(user, User):
+        auth_user = user
+        app_user = getattr(user, 'app_user', None)
+    elif isinstance(user, AppUser):
+        app_user = user
+        auth_user = user.user_auth
+
     results = {}
-    if 'In-App' in channels:
-        send_web_notification(user, title, message)
+    
+    # We MUST have an AppUser for In-App notifications
+    if app_user and 'In-App' in channels:
+        send_web_notification(app_user, title, message)
         results['In-App'] = 'Sent'
+    elif not app_user and 'In-App' in channels:
+        print(f"⚠️ Warning: No AppUser found for {user}. Skipping In-App notification.")
+        results['In-App'] = 'Skipped'
+
+    # Email can use either object
+    email = auth_user.email if auth_user else (app_user.email if app_user else None)
+    if 'Email' in channels and email:
+        results['Email'] = 'Sent' if send_email_notification(email, title, message) else 'Failed'
         
-    if 'Email' in channels and user.email:
-        results['Email'] = 'Sent' if send_email_notification(user.email, title, message) else 'Failed'
-        
-    if user.phone:
+    # Phone requires AppUser
+    phone = app_user.phone if app_user else None
+    if phone:
         if 'SMS' in channels:
-            results['SMS'] = 'Sent' if send_sms_notification(user.phone, message) else 'Failed'
+            results['SMS'] = 'Sent' if send_sms_notification(phone, message) else 'Failed'
         if 'WhatsApp' in channels:
-            results['WhatsApp'] = 'Sent' if send_whatsapp_notification(user.phone, message) else 'Failed'
+            results['WhatsApp'] = 'Sent' if send_whatsapp_notification(phone, message) else 'Failed'
             
     return results
+

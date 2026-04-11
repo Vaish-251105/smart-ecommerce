@@ -47,7 +47,10 @@ class ProductListAPIView(ListCreateAPIView):
             except ValueError:
                 pass
 
-        sort_param = self.request.query_params.get('sort')
+        sort_param = self.request.query_params.get('sort', '')
+        if ':' in sort_param:
+            sort_param = sort_param.split(':')[0]
+
         if sort_param == 'price_asc':
             queryset = queryset.order_by('price')
         elif sort_param == 'price_desc':
@@ -61,6 +64,21 @@ class ProductListAPIView(ListCreateAPIView):
             queryset = queryset.order_by('-created_at')
 
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        limit = request.query_params.get('limit')
+        if limit:
+            try:
+                limit_val = int(limit)
+                if limit_val > 0:
+                    queryset = queryset[:limit_val]
+            except ValueError:
+                pass
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 class ProductDetailApi(RetrieveUpdateDestroyAPIView):
     queryset = Product.objects.all()
@@ -83,7 +101,14 @@ class ProductStatsAPIView(APIView):
 
 class RecommendationsAPIView(APIView):
     def get(self, request):
-        limit = int(request.query_params.get('limit', 5))
+        limit_param = request.query_params.get('limit', 5)
+        try:
+            limit = int(limit_param)
+            if limit <= 0:
+                limit = 5
+        except (ValueError, TypeError):
+            limit = 5
+
         if request.user.is_authenticated:
             # AI recommendation based on past orders
             from orders.models import OrderItem

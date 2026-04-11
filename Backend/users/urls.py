@@ -1,8 +1,17 @@
 from django.urls import path
-from .views import RegisterView, AddressListCreateView, AddressDetailView
+from .views import (
+    UserAddressListCreateView,
+    UserAddressDetailView,
+    UserNotificationsView,
+    MarkNotificationReadView,
+    GlobalAnnouncementsView
+)
+from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
-    path('register/', RegisterView.as_view(), name='register'),
-    path('addresses/', AddressListCreateView.as_view(), name='address-list'),
-    path('addresses/<int:pk>/', AddressDetailView.as_view(), name='address-detail'),
+    path('addresses/', UserAddressListCreateView.as_view(), name='user-addresses'),
+    path('addresses/<int:pk>/', UserAddressDetailView.as_view(), name='user-address-detail'),
+    path('notifications/', UserNotificationsView.as_view(), name='user-notifications'),
+    path('notifications/<int:pk>/read/', MarkNotificationReadView.as_view(), name='mark-notification-read'),
+    path('announcements/', GlobalAnnouncementsView.as_view(), name='global-announcements'),
 ]

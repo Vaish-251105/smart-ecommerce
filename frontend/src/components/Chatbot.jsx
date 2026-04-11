@@ -38,7 +38,35 @@ const Chatbot = () => {
             const { data } = await aiAPI.chatbot(userMsg);
             setMessages(prev => [...prev, { role: 'bot', text: data.response }]);
         } catch (error) {
-            setMessages(prev => [...prev, { role: 'bot', text: "I'm having a small technical glitch, but I'm still here! Can you try rephrasing that?" }]);
+            const status = error.response?.status;
+            const responseData = error.response?.data;
+            let fallback = null;
+
+            if (responseData) {
+                if (typeof responseData === 'string') {
+                    fallback = responseData;
+                } else if (responseData.response) {
+                    fallback = responseData.response;
+                } else if (responseData.error) {
+                    fallback = responseData.error;
+                } else {
+                    fallback = JSON.stringify(responseData);
+                }
+            }
+
+            if (!fallback) {
+                if (status === 401) {
+                    fallback = "BloomBot needs you to sign in again. Please refresh the page and log in.";
+                } else if (status === 403) {
+                    fallback = "BloomBot is blocked from accessing your account. Please re-authenticate.";
+                } else if (error.message) {
+                    fallback = `BloomBot is temporarily unavailable: ${error.message}`;
+                } else {
+                    fallback = "I'm having a small technical glitch, but I'm still here! Can you try rephrasing that?";
+                }
+            }
+
+            setMessages(prev => [...prev, { role: 'bot', text: fallback }]);
         } finally {
             setLoading(false);
         }

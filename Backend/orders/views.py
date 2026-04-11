@@ -10,6 +10,8 @@ import json
 import datetime
 from django.utils import timezone
 from django.db.models import Q
+from decimal import Decimal
+import logging
 
 from store.models import Cart, CartItem, Product
 from .models import Order, OrderItem, Payment
@@ -17,13 +19,13 @@ from .serializers import OrderSerializer
 from .razorpay_utils import create_razorpay_order, verify_signature
 from users.notification_utils import trigger_all_notifications
 
+logger = logging.getLogger(__name__)
 
 class CheckoutAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        from users.models import Address
-        from decimal import Decimal
+        from users.models import Address, AppUser
         
         cart, created = Cart.objects.get_or_create(user=request.user)
         cart_items = cart.items.all()
@@ -31,339 +33,248 @@ class CheckoutAPIView(APIView):
         if not cart_items.exists():
             return Response({"error": "Cart is empty"}, status=400)
 
-        # 1. Handle Address
-        address_id = request.data.get('address_id')
+        # Handle Address
+        address_id = request.data.get('address_id') or request.data.get('addressId')
         if not address_id:
+            logger.error(f"Checkout error: address_id missing in request data: {request.data}")
             return Response({"error": "Shipping address is required"}, status=400)
         
-        address_obj = get_object_or_404(Address, id=address_id, user=request.user.app_user)
+        try:
+            # Try to get AppUser for the request user
+            app_user = AppUser.objects.filter(user_auth=request.user).first()
+            if not app_user:
+                 return Response({"error": "User profile not found"}, status=404)
+                 
+            address_obj = Address.objects.filter(id=address_id, user=app_user).first()
+            if not address_obj:
+                 return Response({"error": "Invalid address selected"}, status=404)
+        except Exception as e:
+            logger.error(f"Checkout error: Address lookup failed for ID {address_id}: {str(e)}")
+            return Response({"error": "Error processing address"}, status=500)
         
-        # Snapshot for order
+        # Snapshot
         delivery_address_snapshot = {
             "full_name": address_obj.full_name,
             "phone": address_obj.phone_number,
             "line1": address_obj.address_line1,
-            "line2": address_obj.address_line2,
-            "locality": address_obj.locality,
             "city": address_obj.city,
             "state": address_obj.state,
             "pincode": address_obj.pincode
         }
 
-        # 2. Calculate Pricing
-        subtotal = Decimal('0.00')
-        for item in cart_items:
-            product = item.product
-            if product.stock < item.quantity:
-                return Response({"error": f"Not enough stock for {product.name}"}, status=400)
-            subtotal += Decimal(str(product.price)) * item.quantity
-
-        # Discount: 10% auto discount above 1000
+        # Calculation
+        subtotal = sum(Decimal(str(i.product.price)) * i.quantity for i in cart_items)
         discount = Decimal('0.00')
-        if subtotal > 1000:
-            discount = (subtotal * Decimal('0.10')).quantize(Decimal('0.01'))
+        if subtotal > 1000: discount = (subtotal * Decimal('0.10')).quantize(Decimal('0.01'))
         
-        # Area Discount: Extra 5% for special cities
-        SPECIAL_CITIES = ["Mumbai", "Pune", "Bangalore", "Delhi", "Hyderabad", "Chennai", "Kolkata", "Ahmedabad", "Surat", "Pune", "Jaipur", "Lucknow", "Patna"]
-        area_discount = Decimal('0.00')
-        if address_obj.city in SPECIAL_CITIES:
-            area_discount = ((subtotal - discount) * Decimal('0.05')).quantize(Decimal('0.01'))
-        
-        total_discount = discount + area_discount
-
-        # Shipping: Dynamic
-        SELLER_STATE = "Maharashtra" 
         shipping = Decimal('0.00')
-        if subtotal < 500:
-            shipping = Decimal('40.00') if address_obj.state == SELLER_STATE else Decimal('80.00')
+        if subtotal < 500: shipping = Decimal('50.00')
 
-        # Tax Calculation (18% Total)
-        tax_rate = Decimal('0.18')
-        tax_total = ((subtotal - total_discount) * tax_rate).quantize(Decimal('0.01'))
-        
-        cgst, sgst, igst = Decimal('0.00'), Decimal('0.00'), Decimal('0.00')
-        if address_obj.state.strip().lower() == SELLER_STATE.lower():
-            cgst = (tax_total / 2).quantize(Decimal('0.01'))
-            sgst = tax_total - cgst
-        else:
-            igst = tax_total
+        tax_total = ((subtotal - discount) * Decimal('0.18')).quantize(Decimal('0.01'))
+        total_price = subtotal - discount + tax_total + shipping
 
-        total_price = subtotal - total_discount + tax_total + shipping
-
-        # 3. Create Order
         order = Order.objects.create(
             user=request.user, 
             status="Pending", 
-            payment_status="Pending",
             subtotal=subtotal,
             discount=discount,
-            cgst=cgst,
-            sgst=sgst,
-            igst=igst,
-            shipping=shipping,
             total_price=total_price,
-            delivery_address=delivery_address_snapshot,
-            tracking_history=[{
-                "status": "Pending",
-                "time": timezone.now().isoformat(),
-                "message": "Order initiated and awaiting payment"
-            }]
+            delivery_address=delivery_address_snapshot
         )
         
         for item in cart_items:
-            OrderItem.objects.create(
-                order=order,
-                product=item.product,
-                quantity=item.quantity,
-                price=item.product.price
-            )
+            OrderItem.objects.create(order=order, product=item.product, quantity=item.quantity, price=item.product.price)
 
-        # 4. Integrate Razorpay
-        razorpay_order = create_razorpay_order(total_price, order.id)
+        # Total in paise for Razorpay
+        try:
+            razorpay_order = create_razorpay_order(total_price, order.id)
+        except ValueError as ve:
+            if getattr(settings, 'DEBUG', False):
+                logger.warning(f"Razorpay keys missing; using mock checkout for Order {order.id}: {ve}")
+                Payment.objects.create(order=order, amount=total_price, is_successful=False, status='Pending')
+                return Response({
+                    "mock": True,
+                    "order_id": order.id,
+                    "total": float(total_price),
+                    "currency": "INR",
+                    "message": "Demo checkout created because Razorpay keys are not configured."
+                })
+            logger.error(f"Checkout config error: {ve}")
+            return Response({"error": str(ve)}, status=503)
+        except Exception as e:
+            logger.error(f"Checkout error: Razorpay order creation failed for Order {order.id}: {e}")
+            return Response({"error": "Payment gateway error. Please try again or contact support."}, status=500)
+
         if not razorpay_order:
-            # order.delete() # Optional cleanup
-            return Response({"error": "Failed to initiate payment with Razorpay"}, status=500)
+            logger.error(f"Checkout error: Razorpay order creation returned no order for Order {order.id}")
+            return Response({"error": "Payment gateway error. Please try again."}, status=500)
 
-        # Create Payment Record
-        Payment.objects.create(
-            order=order,
-            razorpay_order_id=razorpay_order['id'],
-            amount=total_price,
-            status='Pending'
-        )
+        Payment.objects.create(order=order, razorpay_order_id=razorpay_order['id'], amount=total_price)
 
         return Response({
-            "message": "Payment initiated",
             "razorpay_order_id": razorpay_order['id'],
             "order_id": order.id,
             "total": float(total_price),
             "currency": "INR",
-            "key": getattr(settings, 'RAZORPAY_KEY_ID', 'rzp_test_placeholder')
+            "key": getattr(settings, 'RAZORPAY_KEY_ID', '')
         })
-
 
 class VerifyPaymentView(APIView):
     permission_classes = [IsAuthenticated]
-
     def post(self, request):
-        razorpay_order_id = request.data.get('razorpay_order_id')
-        razorpay_payment_id = request.data.get('razorpay_payment_id')
-        razorpay_signature = request.data.get('razorpay_signature')
+        rid = request.data.get('razorpay_order_id')
+        pid = request.data.get('razorpay_payment_id')
+        sig = request.data.get('razorpay_signature')
 
-        # Verify
-        is_valid = verify_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
-        print(f"💰 Razorpay Verification Result: {is_valid}")
-        print(f"OrderId: {razorpay_order_id}, PaymentId: {razorpay_payment_id}")
+        logger.info(f"Verifying payment: OrderID={rid}, PaymentID={pid}")
+
+        if not all([rid, pid, sig]):
+            logger.warning(f"Payment verification failed: Missing fields in {request.data}")
+            return Response({"error": "Missing payment confirmation fields"}, status=400)
+
+        if verify_signature(rid, pid, sig):
+            try:
+                payment = get_object_or_404(Payment, razorpay_order_id=rid)
+                payment.is_successful = True
+                payment.razorpay_payment_id = pid
+                payment.save()
+                
+                order = payment.order
+                order.is_paid = True
+                order.status = "Confirmed"
+                order.save()
+
+                # Reduce Stock & Notify Seller
+                for item in order.items.all():
+                    item.product.stock -= item.quantity
+                    item.product.save()
+                    from users.models import AppUser
+                    seller = AppUser.objects.filter(user_auth=item.product.supplier).first()
+                    if seller:
+                        trigger_all_notifications(seller, "New Order Received! 📦", f"You have a new order for {item.product.name} (Qty: {item.quantity})", channels=['In-App', 'Email', 'WhatsApp'])
+
+                # Notify Buyer
+                from users.models import AppUser
+                buyer = AppUser.objects.filter(user_auth=order.user).first()
+                if buyer:
+                    trigger_all_notifications(buyer, "Order Confirmed! 🎉", f"Thank you for your purchase! Your order #{order.id} has been placed successfully.", channels=['In-App', 'Email', 'SMS', 'WhatsApp'])
+
+                # Clear Cart
+                Cart.objects.filter(user=order.user).delete()
+                logger.info(f"Payment successful for Order {order.id}")
+                return Response({"message": "Payment verified and order confirmed!", "order_id": order.id})
+            except Exception as e:
+                logger.error(f"Error securing order after payment: {str(e)}")
+                return Response({"error": "Payment received but order update failed. Please contact support."}, status=500)
         
-        payment = get_object_or_404(Payment, razorpay_order_id=razorpay_order_id)
-        order = payment.order
-
-        if is_valid:
-            # Update Payment
-            payment.razorpay_payment_id = razorpay_payment_id
-            payment.razorpay_signature = razorpay_signature
-            payment.is_successful = True
-            payment.status = "Success"
-            payment.save()
-
-            # Update Order
-            order.is_paid = True
-            order.payment_status = "Success"
-            order.status = "Confirmed"
-            order.save()
-
-            # Update Inventory
-            for item in order.items.all():
-                product = item.product
-                product.stock -= item.quantity
-                product.save()
-
-            # Clear Cart
-            cart = Cart.objects.filter(user=order.user).first()
-            if cart:
-                cart.items.all().delete()
-
-            # Trigger Multi-Channel Notifications
-            app_user = getattr(order.user, 'app_user', None)
-            if app_user:
-                msg = f"Order #{order.id} Confirmed! Total: ₹{order.total_price}. Track your package at Bloom & Buy."
-                trigger_all_notifications(
-                    user=app_user, 
-                    title="Bloom & Buy Order Confirmed! 🎉", 
-                    message=msg
-                )
-            else:
-                print(f"⚠️ Warning: No app_user profile for user {order.user.username}. Skipping notifications.")
-
-            return Response({"message": "Payment successful", "order_id": order.id})
-        else:
-            print(f"❌ Payment verification failed for Order ID: {razorpay_order_id}")
-            payment.status = "Failed"
-            payment.save()
-            order.payment_status = "Failed"
-            order.save()
-            return Response({"error": "Payment verification failed"}, status=400)
-
+        logger.error(f"Payment signature verification failed for OrderID={rid}")
+        return Response({"error": "Payment security verification failed"}, status=400)
 
 class MyOrdersView(ListAPIView):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
-
     def get_queryset(self):
         return Order.objects.filter(user=self.request.user).order_by('-created_at')
-
-
-class AdminOrderListView(ListAPIView):
-    serializer_class = OrderSerializer
-    permission_classes = [IsAdminUser]
-    queryset = Order.objects.all().order_by('-created_at')
-
-
-class SellerOrderListView(ListAPIView):
-    serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        # Return orders where at least one product belongs to this seller
-        return Order.objects.filter(items__product__supplier=self.request.user).distinct().order_by('-created_at')
-
 
 class TrackOrderAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, order_id):
-        order = get_object_or_404(Order, id=order_id)
-        
-        # Ensure user can only track their own orders
-        if order.user != request.user and not request.user.is_staff:
-            return Response({"error": "Forbidden"}, status=403)
+        order = get_object_or_404(Order, id=order_id, user=request.user)
 
-        status_levels = ["Pending", "Confirmed", "Packed", "Shipped", "In Transit", "Out for Delivery", "Delivered"]
-        try:
-            current_level = status_levels.index(order.status)
-        except ValueError:
-            current_level = 0
-
+        status_steps = [
+            'Pending', 'Confirmed', 'Packed', 'Shipped',
+            'In Transit', 'Out for Delivery', 'Delivered'
+        ]
+        current_index = status_steps.index(order.status) if order.status in status_steps else 0
         steps = []
-        for i, s in enumerate(status_levels):
+        for idx, name in enumerate(status_steps):
             steps.append({
-                "name": s,
-                "completed": i <= current_level,
-                "current": i == current_level
+                'name': name,
+                'completed': idx <= current_index,
+                'current': idx == current_index,
+                'time': None,
             })
 
-        return Response({
-            "orderId": order.id,
-            "status": order.status,
-            "steps": steps,
-            "history": order.tracking_history,
-            "tracking_id": order.tracking_id,
-            "carrier": order.carrier,
-            "estimatedDelivery": order.estimated_delivery
-        })
+        if order.tracking_history:
+            history = order.tracking_history
+            # Fill missing step times using history if available
+            for step in steps:
+                for entry in history:
+                    if entry.get('status') == step['name']:
+                        step['time'] = entry.get('time')
+                        break
+        else:
+            history = [
+                {
+                    'status': step['name'],
+                    'time': None,
+                    'message': f"Your order is now {step['name'].lower()}.",
+                }
+                for step in steps if step['completed']
+            ]
 
+        return Response({
+            'id': order.id,
+            'status': order.status,
+            'total': float(order.total_price),
+            'createdAt': order.created_at,
+            'deliveryAddress': order.delivery_address,
+            'items': [
+                {
+                    'product': item.product.name,
+                    'quantity': item.quantity,
+                    'price': float(item.price)
+                }
+                for item in order.items.all()
+            ],
+            'steps': steps,
+            'history': history,
+            'estimatedDelivery': order.estimated_delivery,
+            'tracking_id': order.tracking_id or f"TRACK-{order.id:06d}",
+            'carrier': order.carrier or 'Bloom Logistics'
+        })
 
 class UpdateOrderStatusView(APIView):
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [IsAdminUser]
     def patch(self, request, order_id):
         order = get_object_or_404(Order, id=order_id)
-        
-        # Check if Admin or Seller of product
-        is_seller = order.items.filter(product__supplier=request.user).exists()
-        if not request.user.is_staff and not is_seller:
-            return Response({"error": "Permission denied"}, status=403)
-
-        new_status = request.data.get("status")
-        tracking_id = request.data.get("tracking_id")
-        carrier = request.data.get("carrier")
-
-        if new_status: order.status = new_status
-        if tracking_id: order.tracking_id = tracking_id
-        if carrier: order.carrier = carrier
-        
-        # Add to history
-        order.tracking_history.append({
-            "status": new_status,
-            "time": timezone.now().isoformat(),
-            "message": request.data.get("message", f"Order moved to {new_status}")
-        })
-        
+        order.status = request.data.get("status", order.status)
         order.save()
-        
-        # Trigger Notification for update
-        app_user = order.user.app_user
-        msg = f"Your order #{order.id} status is now: {new_status}."
-        trigger_all_notifications(
-            user=app_user, 
-            title="Order Status Updated", 
-            message=msg
-        )
-
-        return Response({"message": "Order status updated successfully"})
+        return Response({"message": "Status updated"})
 
 
 def generate_invoice(request, order_id):
-    order = get_object_or_404(Order, id=order_id)
-
+    order = get_object_or_404(Order, id=order_id, user=request.user)
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="invoice_{order.id}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="order_{order.id}_invoice.pdf"'
 
-    p = canvas.Canvas(response)
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(100, 800, f"INVOICE - Order #{order.id}")
-    
-    p.setFont("Helvetica", 12)
-    p.drawString(100, 780, f"Date: {order.created_at.strftime('%Y-%m-%d %H:%M')}")
-    p.drawString(100, 760, f"Customer: {order.user.username}")
-    p.drawString(100, 740, f"Email: {order.user.email}")
-    p.drawString(100, 720, f"Address: {order.shipping_address}")
-    
-    p.line(100, 710, 500, 710)
-    p.drawString(100, 690, "Product")
-    p.drawString(400, 690, "Qty")
-    p.drawString(450, 690, "Price")
-    
-    y = 670
-    for item in order.items.all():
-        p.drawString(100, y, f"{item.product.name}")
-        p.drawString(400, y, f"{item.quantity}")
-        p.drawString(450, y, f"₹{item.price}")
+    buffer = canvas.Canvas(response)
+    buffer.setFont('Helvetica-Bold', 18)
+    buffer.drawString(50, 800, f'Invoice for Order #{order.id}')
+    buffer.setFont('Helvetica', 12)
+    buffer.drawString(50, 770, f'Date: {order.created_at.strftime("%Y-%m-%d %H:%M")})')
+    buffer.drawString(50, 750, f'Status: {order.status}')
+    buffer.drawString(50, 730, f'Total: ₹{order.total_price}')
+    buffer.drawString(50, 710, 'Delivery Address:')
+
+    y = 690
+    for key, value in order.delivery_address.items():
+        buffer.drawString(60, y, f'{key.replace("_", " ").capitalize()}: {value}')
         y -= 20
-        
-    # Final Totals
-    p.line(100, y-10, 500, y-10)
-    y -= 30
-    p.setFont("Helvetica", 10)
-    p.drawString(300, y, f"Subtotal:")
-    p.drawString(450, y, f"₹{order.subtotal}")
-    y-=15
-    p.drawString(300, y, f"Discount:")
-    p.drawString(450, y, f"-₹{order.discount}")
-    y-=15
-    if order.igst > 0:
-        p.drawString(300, y, f"IGST (18%):")
-        p.drawString(450, y, f"₹{order.igst}")
-    else:
-        p.drawString(300, y, f"CGST (9%):")
-        p.drawString(450, y, f"₹{order.cgst}")
-        y-=15
-        p.drawString(300, y, f"SGST (9%):")
-        p.drawString(450, y, f"₹{order.sgst}")
-    y-=15
-    p.drawString(300, y, f"Shipping:")
-    p.drawString(450, y, f"₹{order.shipping}")
-    y-=20
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(300, y, f"Grand Total:")
-    p.drawString(450, y, f"₹{order.total_price}")
-    
-    y-=40
-    p.setFont("Helvetica", 10)
-    p.drawString(100, y, f"Payment Method: {getattr(order.payment, 'payment_method', 'Razorpay')}")
-    p.drawString(100, y-15, f"Transaction ID: {getattr(order.payment, 'razorpay_payment_id', 'N/A')}")
-    p.drawString(100, y-30, f"Order Status: {order.status}")
 
-    p.showPage()
-    p.save()
+    y -= 20
+    buffer.drawString(50, y, 'Items:')
+    y -= 20
+
+    for item in order.items.all():
+        buffer.drawString(60, y, f'{item.quantity} × {item.product.name} @ ₹{item.price} = ₹{item.quantity * item.price}')
+        y -= 20
+        if y < 80:
+            buffer.showPage()
+            buffer.setFont('Helvetica', 12)
+            y = 800
+
+    buffer.showPage()
+    buffer.save()
     return response

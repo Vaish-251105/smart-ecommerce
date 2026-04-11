@@ -172,6 +172,29 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             attrs['username'] = self.initial_data['email']
         
         data = super().validate(attrs)
+        # Ensure a linked AppUser record exists for the authenticated user.
+        try:
+            from users.models import AppUser, ConsumerProfile
+            if not hasattr(self.user, 'app_user') or self.user.app_user is None:
+                app_user = AppUser.objects.filter(user_auth=self.user).first()
+                if not app_user and self.user.email:
+                    app_user = AppUser.objects.filter(email=self.user.email).first()
+                    if app_user:
+                        app_user.user_auth = self.user
+                        app_user.save()
+
+                if not app_user:
+                    app_user = AppUser.objects.create(
+                        user_auth=self.user,
+                        username=self.user.username or self.user.email or 'user',
+                        email=self.user.email or '',
+                        role='consumer',
+                        phone=''
+                    )
+                    ConsumerProfile.objects.get_or_create(user=app_user)
+        except Exception:
+            pass
+
         # Customize the return data
         data['token'] = data.pop('access') # Rename access to token
         data['user'] = UserSerializer(self.user).data

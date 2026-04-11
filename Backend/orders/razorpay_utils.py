@@ -2,10 +2,11 @@ import razorpay
 from django.conf import settings
 
 def get_razorpay_client():
-    return razorpay.Client(auth=(
-        getattr(settings, 'RAZORPAY_KEY_ID', ''),
-        getattr(settings, 'RAZORPAY_KEY_SECRET', '')
-    ))
+    key_id = getattr(settings, 'RAZORPAY_KEY_ID', '')
+    key_secret = getattr(settings, 'RAZORPAY_KEY_SECRET', '')
+    if not key_id or not key_secret or key_id.startswith('rzp_test_placeholder') or key_secret.startswith('placeholder'):
+        raise ValueError('Razorpay API keys are not configured correctly. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment variables.')
+    return razorpay.Client(auth=(key_id, key_secret))
 
 def create_razorpay_order(amount_in_rupees, receipt_id):
     """

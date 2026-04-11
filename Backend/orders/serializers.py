@@ -19,16 +19,26 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    user = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+    totalAmount = serializers.DecimalField(source='total_price', max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
         model = Order
         fields = [
-            'id', 'user', 'created_at', 'subtotal', 'discount', 
-            'shipping', 'cgst', 'sgst', 'igst', 'total_price', 
+            'id', 'user', 'createdAt', 'subtotal', 'discount', 
+            'shipping', 'cgst', 'sgst', 'igst', 'total_price', 'totalAmount', 
             'is_paid', 'status', 'payment_status', 'items', 
             'delivery_address', 'tracking_history', 'tracking_id', 
             'carrier', 'estimated_delivery'
         ]
+
+    def get_user(self, obj):
+        return {
+            'id': obj.user.id,
+            'name': obj.user.username,
+            'email': obj.user.email
+        }
 
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:

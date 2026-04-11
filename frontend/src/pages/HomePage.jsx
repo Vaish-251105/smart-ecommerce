@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { productsAPI } from '../utils/api';
+import { productsAPI, authAPI, adminAPI } from '../utils/api';
 import ProductCard from '../components/ProductCard';
 import PremiumImage from '../components/PremiumImage';
 import SkeletonCard from '../components/SkeletonCard';
+import AnnouncementBoard from '../components/AnnouncementBoard';
 import {
     FiArrowRight, FiShoppingBag, FiAward, FiTruck,
-    FiPercent, FiChevronLeft, FiChevronRight, FiZap
+    FiPercent, FiChevronLeft, FiChevronRight, FiZap,
+    FiPlus, FiPlusCircle
 } from 'react-icons/fi';
 
 const SLIDES = [
@@ -234,6 +236,8 @@ const HomePage = () => {
                     ))}
                 </div>
             </section>
+
+            <AnnouncementBoard />
 
             {/* ===== WHY SHOP WITH US ===== */}
             <section style={{ background: 'var(--bg-card)', padding: '0', borderBottom: '1px solid var(--border-light)' }}>

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { FiUser, FiMail, FiPhone, FiMapPin, FiSave, FiAward, FiImage } from 'react-icons/fi';
 import { formatINR } from '../utils/currency';
 import UserAvatar from '../components/UserAvatar';
+import AnnouncementBoard from '../components/AnnouncementBoard';
 
 const ProfilePage = () => {
     const { user, updateUser } = useAuth();
@@ -37,6 +38,9 @@ const ProfilePage = () => {
         <div className="main-content">
             <div className="container section">
                 <div className="page-header"><h1 className="page-title">My Profile</h1></div>
+                
+                <AnnouncementBoard />
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
                     <div>
                         <div className="glass-card" style={{ padding: '32px' }}>

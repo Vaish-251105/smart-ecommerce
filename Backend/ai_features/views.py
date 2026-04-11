@@ -6,7 +6,11 @@ from store.models import Product
 from orders.models import Order, OrderItem
 from django.conf import settings
 from django.db.models import Q
-import openai
+
+try:
+    import openai
+except ImportError:
+    openai = None
 
 # --- Existing Recommendation Logic ---
 @api_view(['GET'])
@@ -37,11 +41,11 @@ class ChatbotAPIView(APIView):
             if len(kw) > 3: # Ignore small words
                 query_filter |= Q(name__icontains=kw) | Q(description__icontains=kw) | Q(category__name__icontains=kw)
         
-        matched_products = Product.objects.filter(query_filter).distinct()[:10]
+        matched_products = list(Product.objects.filter(query_filter).distinct()[:10])
         
-        # If no specific matches, get Featured products
-        if not matched_products.exists():
-            matched_products = Product.objects.filter(is_active=True).order_by('-created_at')[:8]
+        # If no specific matches, get featured products
+        if not matched_products:
+            matched_products = list(Product.objects.filter(is_active=True).order_by('-created_at')[:8])
 
         product_context = "\n".join([
             f"- {p.name} [ID:{p.id}]: ₹{p.price} | Cat: {p.category.name if p.category else 'General'} | Specs: {p.description[:100]}..."
@@ -89,29 +93,57 @@ class ChatbotAPIView(APIView):
         try:
             api_key = getattr(settings, 'OPENAI_API_KEY', None)
             if not api_key or api_key.startswith('sk-placeholder'):
-                # Intelligent Fallback response even without API key
-                best_match = matched_products.first()
-                match_text = f"Based on your query, I found {matched_products.count()} items including '{best_match.name}' for ₹{best_match.price}." if best_match else "I'm looking at our catalog now."
+                # Intelligent fallback response even without API key
+                best_match = matched_products[0] if matched_products else None
+                match_text = f"Based on your query, I found {len(matched_products)} items including '{best_match.name}' for ₹{best_match.price}." if best_match else "I'm looking at our catalog now."
                 return Response({
                     "response": f"I'm BloomBot! {match_text} (AI is in Demo Mode - configure OpenAI API key for full logic). How can I help further?",
                     "is_mock": True,
-                    "matched_count": matched_products.count()
+                    "matched_count": len(matched_products)
                 })
 
-            client = openai.OpenAI(api_key=api_key)
-            completion = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_query}
-                ],
-                temperature=0.7
-            )
-            ai_response = completion.choices[0].message.content
+            if openai is None:
+                raise RuntimeError("OpenAI SDK is not installed")
+
+            openai.api_key = api_key
+            if hasattr(openai, 'OpenAI'):
+                client = openai.OpenAI(api_key=api_key)
+                completion = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_query}
+                    ],
+                    temperature=0.7
+                )
+                ai_response = completion.choices[0].message.content
+            else:
+                completion = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_query}
+                    ],
+                    temperature=0.7
+                )
+                ai_response = completion.choices[0].message['content']
+
             return Response({"response": ai_response, "is_mock": False})
 
         except Exception as e:
+            best_match = matched_products[0] if matched_products else None
+            if "track" in user_query or "order" in user_query:
+                if order_list:
+                    fallback_text = f"I can't reach AI right now, but your latest orders are: {', '.join(order_list)}. Please check My Orders for tracking details."
+                else:
+                    fallback_text = "I can't reach AI right now, but you currently have no recent orders. Try searching for products or ask about categories."
+            elif best_match:
+                fallback_text = f"I couldn't access AI right now, but based on your request I recommend '{best_match.name}' priced at ₹{best_match.price}."
+            else:
+                fallback_text = "I couldn't access AI right now, but I can still search our catalog for you."
             return Response({
-                "response": "I'm having trouble connecting to my brain right now, but I can still tell you about our products!",
+                "response": fallback_text,
+                "is_mock": True,
+                "matched_count": len(matched_products),
                 "error": str(e)
-            }, status=500)
+            })

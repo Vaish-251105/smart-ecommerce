@@ -43,6 +43,9 @@ export const authAPI = {
     getAddresses: () => api.get('/users/addresses/'),
     addAddress: (data) => api.post('/users/addresses/', data),
     deleteAddress: (id) => api.delete(`/users/addresses/${id}/`),
+    getNotifications: () => api.get('/users/notifications/'),
+    markNotificationRead: (id) => api.post(`/users/notifications/${id}/read/`),
+    getAnnouncements: () => api.get('/users/announcements/'),
 };
 
 // Products API
@@ -108,8 +111,10 @@ export const adminAPI = {
     overrideProduct: (id, data) => api.put(`/admin/products/${id}/override`, data),
     getUsers: () => api.get('/admin/users'),
     getUserDetail: (id) => api.get(`/admin/users/${id}`),
+    toggleUser: (id) => api.post(`/admin/users/${id}/toggle`),
     getSellers: () => api.get('/admin/sellers'),
     getSellerDetail: (id) => api.get(`/admin/sellers/${id}`),
+    toggleSeller: (id) => api.post(`/admin/sellers/${id}/toggle`),
     getNotifications: () => api.get('/admin/notifications'),
     markNotificationRead: (id) => api.post(`/admin/notifications/${id}/read`),
     sendNotification: (data) => api.post('/admin/notifications/send', data),
@@ -121,12 +126,8 @@ export const sellerAPI = {
     getDashboard: () => api.get('/seller/dashboard/'),
     getAnalytics: () => api.get('/seller/analytics/'),
     getProducts: (params) => api.get('/seller/products/', { params }),
-    addProduct: (formData) => api.post('/seller/products/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
-    updateProduct: (id, formData) => api.put(`/seller/products/${id}/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
+    addProduct: (formData) => api.post('/seller/products/', formData),
+    updateProduct: (id, formData) => api.put(`/seller/products/${id}/`, formData),
     deleteProduct: (id) => api.delete(`/seller/products/${id}/`),
     getOrders: (params) => api.get('/seller/orders/', { params }),
     getNotifications: () => api.get('/seller/notifications/'),

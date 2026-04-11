@@ -104,6 +104,19 @@ const CheckoutPage = () => {
                 total: pricing.total
             });
 
+            if (data.mock) {
+                toast.success('Demo order created successfully.');
+                await clearCart();
+                navigate(`/orders/tracking/${data.order_id}`);
+                return;
+            }
+
+            if (!data.key) {
+                toast.error('Payment gateway configuration is missing. Please contact support.');
+                setLoading(false);
+                return;
+            }
+
             // 2. Load Razorpay
             const loaded = await loadRazorpay();
             if (!loaded) {
@@ -116,7 +129,7 @@ const CheckoutPage = () => {
             const options = {
                 key: data.key,
                 amount: data.total * 100,
-                currency: data.currency,
+                currency: data.currency || 'INR',
                 name: 'Bloom & Buy',
                 description: `Order #${data.order_id}`,
                 order_id: data.razorpay_order_id,

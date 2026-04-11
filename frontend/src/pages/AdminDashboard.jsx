@@ -533,41 +533,44 @@ const AdminDashboard = () => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {orders.map(order => (
-                                                    <tr key={order._id}>
-                                                        <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--action)', cursor: 'pointer' }} onClick={() => fetchOrderDetail(order._id)}>
-                                                            #{order._id.slice(-8).toUpperCase()}
-                                                        </td>
-                                                        <td>
-                                                            <div style={{ fontWeight: 600 }}>{order.user?.name}</div>
-                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{order.user?.email}</div>
-                                                        </td>
-                                                        <td style={{ fontWeight: 700 }}>{formatINR(order.totalAmount)}</td>
-                                                        <td>
-                                                            <span className={`status-tag ${getStatusClass(order.status)}`}>
-                                                                {order.status}
-                                                            </span>
-                                                        </td>
-                                                        <td>{new Date(order.createdAt).toLocaleDateString()}</td>
-                                                        <td>
-                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                                <button className="btn btn-ghost btn-sm" onClick={() => fetchOrderDetail(order._id)}>
-                                                                    <FiEye size={16} />
-                                                                </button>
-                                                                <select 
-                                                                    className="form-select" 
-                                                                    value={order.status}
-                                                                    onChange={(e) => updateOrderStatus(order._id, e.target.value)}
-                                                                    style={{ padding: '4px 8px', fontSize: '0.8rem' }}
-                                                                >
-                                                                    {['Pending', 'Confirmed', 'Packed', 'Shipped', 'In Transit', 'Out for Delivery', 'Delivered', 'Cancelled'].map(s => (
-                                                                        <option key={s} value={s}>{s}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                {orders.map(order => {
+                                                    const orderId = order.id || order._id;
+                                                    return (
+                                                        <tr key={orderId}>
+                                                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--action)', cursor: 'pointer' }} onClick={() => fetchOrderDetail(orderId)}>
+                                                                #{String(orderId).slice(-8).toUpperCase()}
+                                                            </td>
+                                                            <td>
+                                                                <div style={{ fontWeight: 600 }}>{order.user?.name}</div>
+                                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{order.user?.email}</div>
+                                                            </td>
+                                                            <td style={{ fontWeight: 700 }}>{formatINR(order.totalAmount)}</td>
+                                                            <td>
+                                                                <span className={`status-tag ${getStatusClass(order.status)}`}>
+                                                                    {order.status}
+                                                                </span>
+                                                            </td>
+                                                            <td>{new Date(order.createdAt).toLocaleDateString()}</td>
+                                                            <td>
+                                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                    <button className="btn btn-ghost btn-sm" onClick={() => fetchOrderDetail(orderId)}>
+                                                                        <FiEye size={16} />
+                                                                    </button>
+                                                                    <select 
+                                                                        className="form-select" 
+                                                                        value={order.status}
+                                                                        onChange={(e) => updateOrderStatus(orderId, e.target.value)}
+                                                                        style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                                                                    >
+                                                                        {['Pending', 'Confirmed', 'Packed', 'Shipped', 'In Transit', 'Out for Delivery', 'Delivered', 'Cancelled'].map(s => (
+                                                                            <option key={s} value={s}>{s}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
@@ -897,9 +900,9 @@ const AdminDashboard = () => {
                                                                      className={`btn btn-sm ${user.is_active !== false ? 'btn-danger' : 'btn-success'}`}
                                                                      onClick={async () => {
                                                                          try {
-                                                                             await api.post(`/admin/users/${user.id || user._id}/action`, { action: 'toggle_status' });
+                                                                             await adminAPI.toggleUser(user.id || user._id);
                                                                              toast.success("User status updated");
-                                                                             fetchUsers();
+                                                                             fetchData();
                                                                          } catch (err) { toast.error("Failed to update user"); }
                                                                      }}
                                                                  >
@@ -1222,7 +1225,7 @@ const AdminDashboard = () => {
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '20px' }}>
                             <div>
-                                <h2 style={{ fontSize: '1.5rem', marginBottom: '4px' }}>Order #{selectedOrder._id.slice(-8).toUpperCase()}</h2>
+                                <h2 style={{ fontSize: '1.5rem', marginBottom: '4px' }}>Order #{String(selectedOrder.id || selectedOrder._id).slice(-8).toUpperCase()}</h2>
                                 <p style={{ color: 'var(--text-muted)' }}>Placed on {new Date(selectedOrder.createdAt).toLocaleString()}</p>
                             </div>
                             <span className={`status-tag ${getStatusClass(selectedOrder.status)}`} style={{ fontSize: '0.9rem', padding: '6px 16px' }}>
