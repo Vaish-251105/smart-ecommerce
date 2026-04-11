@@ -23,10 +23,11 @@ services:
         value: "3.11.0"
 
   # 2. Frontend Static Site (React/Vite)
-  - type: static
+  - type: web
     name: smart-ecommerce-frontend
+    runtime: static
     buildCommand: "npm install && npm run build"
-    publishDir: dist
+    staticPublishPath: ./dist
     rootDir: frontend
     envVars:
       - key: VITE_API_BASE_URL
