@@ -61,9 +61,10 @@ const AdminDashboard = () => {
     const fetchNotifications = async () => {
         try {
             const { data } = await adminAPI.getNotifications();
-            setNotifications(data || []);
+            setNotifications(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error('Error fetching notifications');
+            setNotifications([]);
         }
     };
 
@@ -301,7 +302,7 @@ const AdminDashboard = () => {
                                 onClick={() => setShowNotifications(!showNotifications)}
                             >
                                 <FiBell size={20} />
-                                {notifications.filter(n => !n.isRead).length > 0 && (
+                                {(Array.isArray(notifications) ? notifications.filter(n => !n.isRead) : []).length > 0 && (
                                     <span style={{ 
                                         position: 'absolute', top: '4px', right: '4px', 
                                         background: 'var(--error)', width: '8px', height: '8px', 
@@ -320,7 +321,7 @@ const AdminDashboard = () => {
                                         Notifications
                                         <button className="btn btn-ghost btn-sm" onClick={() => setShowNotifications(false)}><FiXCircle /></button>
                                     </div>
-                                    {notifications.length === 0 ? (
+                                    {(!Array.isArray(notifications) || notifications.length === 0) ? (
                                         <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>No notifications</div>
                                     ) : (
                                         notifications.map(n => (

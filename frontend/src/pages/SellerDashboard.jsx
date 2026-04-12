@@ -63,9 +63,10 @@ const SellerDashboard = () => {
         try {
             setLoading(true);
             const { data } = await sellerAPI.getProducts({ limit: 50 });
-            setProducts(data.products);
+            setProducts(Array.isArray(data?.products) ? data.products : []);
         } catch (error) {
             toast.error('Failed to load products');
+            setProducts([]);
         } finally {
             setLoading(false);
         }
@@ -75,9 +76,10 @@ const SellerDashboard = () => {
         try {
             setLoading(true);
             const { data } = await sellerAPI.getOrders({ limit: 30 });
-            setOrders(data.orders);
+            setOrders(Array.isArray(data?.orders) ? data.orders : []);
         } catch (error) {
             toast.error('Failed to load orders');
+            setOrders([]);
         } finally {
             setLoading(false);
         }
@@ -87,9 +89,10 @@ const SellerDashboard = () => {
         try {
             setLoading(true);
             const { data } = await sellerAPI.getNotifications();
-            setNotifications(data);
+            setNotifications(Array.isArray(data) ? data : []);
         } catch (error) {
             toast.error('Failed to load notifications');
+            setNotifications([]);
         } finally {
             setLoading(false);
         }
@@ -98,7 +101,9 @@ const SellerDashboard = () => {
     const markAsRead = async (id) => {
         try {
             await sellerAPI.markNotificationRead(id);
-            setNotifications(notifications.map(n => (n.id || n._id) === id ? { ...n, isRead: true } : n));
+            if (Array.isArray(notifications)) {
+                setNotifications(notifications.map(n => (n.id || n._id) === id ? { ...n, isRead: true } : n));
+            }
         } catch (error) {
             console.error('Failed to mark as read');
         }

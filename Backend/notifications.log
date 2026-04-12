@@ -116,3 +116,13 @@ BODY: Hi Vaishnavi Singh, you have successfully logged in with Google to Bloom &
 BODY: Subject: Manual Test
 Checking SMS/WhatsApp delivery status manually
 --------------------------------------------------
+[2026-04-13 02:00:05.356048] [EMAIL] TO: admin@bloomandbuy.com
+BODY: Subject: Login Successful ✅
+Hi admin@bloomandbuy.com, you have successfully logged in. Welcome back to Bloom & Buy!
+--------------------------------------------------
+[2026-04-13 02:00:34.109060] [EMAIL] TO: vaushnavisingh10@gmail.com
+BODY: Subject: Welcome to Bloom & Buy — You are subscribed!
+Thank you for subscribing to Bloom & Buy newsletters.
+
+You will now receive the latest offers, deals, and product updates directly in your inbox. Stay tuned for exciting promotions and savings!
+--------------------------------------------------
