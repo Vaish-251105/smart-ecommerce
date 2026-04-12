@@ -38,6 +38,7 @@ export const authAPI = {
     register: (data) => api.post('/users/register/', data),
     login: (data) => api.post('/token/', { username: data.email, password: data.password }),
     googleLogin: (data) => api.post('/users/google/', data),
+    subscribe: (data) => api.post('/users/subscribe/', data),
     getProfile: () => api.get('/users/me/'),
     updateProfile: (data) => api.put('/users/me/', data),
     getAddresses: () => api.get('/users/addresses/'),
@@ -119,6 +120,8 @@ export const adminAPI = {
     markNotificationRead: (id) => api.post(`/admin/notifications/${id}/read`),
     sendNotification: (data) => api.post('/admin/notifications/send', data),
     sendPromotion: (data) => api.post('/admin/promotions/send', data),
+    getAnnouncements: () => api.get('/users/announcements/'),
+    deleteAnnouncement: (id) => api.delete(`/users/announcements/${id}/`),
 };
 
 // Seller API

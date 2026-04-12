@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { authAPI } from '../utils/api';
 import { FiTwitter, FiInstagram, FiFacebook, FiYoutube, FiMail, FiArrowRight } from 'react-icons/fi';
 
 const FooterLogo = () => (
@@ -23,9 +25,26 @@ const Footer = () => {
     const [email, setEmail] = useState('');
     const [subscribed, setSubscribed] = useState(false);
 
-    const handleSubscribe = (e) => {
+    const handleSubscribe = async (e) => {
         e.preventDefault();
-        if (email.trim()) { setSubscribed(true); setEmail(''); }
+        if (!email.trim()) {
+            toast.error('Please enter a valid email address.');
+            return;
+        }
+        try {
+            const { data } = await authAPI.subscribe({ email });
+            setSubscribed(true);
+            setEmail('');
+            if (data.warning) {
+                toast.error(data.warning, { duration: 6000 });
+                toast.success(data.message);
+            } else {
+                toast.success(data.message || 'Subscription successful!');
+            }
+        } catch (error) {
+            const message = error?.response?.data?.error || 'Subscription failed. Please try again.';
+            toast.error(message);
+        }
     };
 
     return (

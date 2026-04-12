@@ -1,4 +1,4 @@
-from rest_framework.views import APIView
+﻿from rest_framework.views import APIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
@@ -126,7 +126,7 @@ class AdminModerateProductView(APIView):
             if product.supplier:
                 target_app_user = AppUser.objects.filter(user_auth=product.supplier).first()
                 if target_app_user:
-                    title = f"Product {status.capitalize()} ✅" if status == 'approved' else f"Product {status.capitalize()} ❌"
+                    title = f"Product {status.capitalize()} âœ…" if status == 'approved' else f"Product {status.capitalize()} âŒ"
                     message = f"Your product '{product.name}' was {status} by Admin."
                     if status == 'rejected' and reason:
                         message += f" Reason: {reason}"

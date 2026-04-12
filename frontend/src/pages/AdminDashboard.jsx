@@ -38,6 +38,7 @@ const AdminDashboard = () => {
     const [bulkSelection, setBulkSelection] = useState([]);
     const [users, setUsers] = useState([]);
     const [sellers, setSellers] = useState([]);
+    const [announcements, setAnnouncements] = useState([]);
     const [selectedSeller, setSelectedSeller] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -98,6 +99,9 @@ const AdminDashboard = () => {
             } else if (activeTab === 'sellers') {
                 const { data } = await adminAPI.getSellers();
                 setSellers(data.sellers || []);
+            } else if (activeTab === 'promotions') {
+                const { data } = await adminAPI.getAnnouncements();
+                setAnnouncements(data || []);
             }
         } catch (error) {
             console.error('Fetch error:', error);
@@ -249,6 +253,18 @@ const AdminDashboard = () => {
             toast.success('Seller profile updated');
         } catch (error) {
             toast.error('Error updating seller profile');
+        }
+    };
+
+    const handleDeleteAnnouncement = async (id) => {
+        if (!window.confirm("Are you sure you want to delete this announcement?")) return;
+        try {
+            await adminAPI.deleteAnnouncement(id);
+            toast.success("Announcement deleted");
+            const { data } = await adminAPI.getAnnouncements();
+            setAnnouncements(data || []);
+        } catch (error) {
+            toast.error("Failed to delete announcement");
         }
     };
 
@@ -997,71 +1013,116 @@ const AdminDashboard = () => {
                             {activeTab === 'promotions' && (
                                 <div className="fade-in">
                                     <h2 className="page-title" style={{ fontSize: '1.2rem', marginBottom: '24px' }}>Send Global Announcement</h2>
-                                    <div className="glass-card" style={{ maxWidth: '700px', padding: '32px' }}>
-                                        <form onSubmit={async (e) => {
-                                            e.preventDefault();
-                                            const formData = new FormData(e.target);
-                                            const title = formData.get('title');
-                                            const content = formData.get('content');
-                                            const target_role = formData.get('target_role');
-                                            const channels = [];
-                                            if (formData.get('email')) channels.push('Email');
-                                            if (formData.get('sms')) channels.push('SMS');
-                                            if (formData.get('whatsapp')) channels.push('WhatsApp');
-                                            if (formData.get('inapp')) channels.push('In-App');
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '32px' }}>
+                                        <div className="glass-card" style={{ padding: '32px' }}>
+                                            <form onSubmit={async (e) => {
+                                                e.preventDefault();
+                                                const formData = new FormData(e.target);
+                                                const title = formData.get('title');
+                                                const content = formData.get('content');
+                                                const target_role = formData.get('target_role');
+                                                const channels = [];
+                                                if (formData.get('email')) channels.push('Email');
+                                                if (formData.get('sms')) channels.push('SMS');
+                                                if (formData.get('whatsapp')) channels.push('WhatsApp');
+                                                if (formData.get('inapp')) channels.push('In-App');
 
-                                            if (channels.length === 0) {
-                                                toast.error("Select at least one channel");
-                                                return;
-                                            }
+                                                if (channels.length === 0) {
+                                                    toast.error("Select at least one channel");
+                                                    return;
+                                                }
 
-                                            try {
-                                                toast.loading("Sending announcement...", { id: 'promo-send' });
-                                                await adminAPI.sendPromotion({ title, content, target_role, channels });
-                                                toast.success("Announcement sent successfully!", { id: 'promo-send' });
-                                                e.target.reset();
-                                            } catch (error) {
-                                                toast.error("Failed to send announcement", { id: 'promo-send' });
-                                            }
-                                        }}>
-                                            <div className="form-group">
-                                                <label className="form-label">Subject / Title</label>
-                                                <input className="form-input" name="title" placeholder="e.g. Flash Sale Live! ⚡" required />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Message Content</label>
-                                                <textarea className="form-input" name="content" rows="4" placeholder="Write your message here..." required />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Target Audience</label>
-                                                <select className="form-select" name="target_role">
-                                                    <option value="consumer">All Customers</option>
-                                                    <option value="supplier">All Sellers</option>
-                                                </select>
-                                            </div>
-                                            
-                                            <div style={{ margin: '24px 0', padding: '16px', background: 'rgba(99,102,241,0.05)', borderRadius: '12px' }}>
-                                                <label className="form-label" style={{ marginBottom: '12px', display: 'block' }}>Delivery Channels</label>
-                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                                                        <input type="checkbox" name="inapp" defaultChecked /> In-App Notification
-                                                    </label>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                                                        <input type="checkbox" name="email" defaultChecked /> Email Service
-                                                    </label>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                                                        <input type="checkbox" name="sms" /> SMS (Phone)
-                                                    </label>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                                                        <input type="checkbox" name="whatsapp" /> WhatsApp
-                                                    </label>
+                                                try {
+                                                    toast.loading("Sending announcement...", { id: 'promo-send' });
+                                                    await adminAPI.sendPromotion({ title, content, target_role, channels });
+                                                    toast.success("Announcement sent successfully!", { id: 'promo-send' });
+                                                    e.target.reset();
+                                                    // Refresh list
+                                                    const { data } = await adminAPI.getAnnouncements();
+                                                    setAnnouncements(data || []);
+                                                } catch (error) {
+                                                    toast.error("Failed to send announcement", { id: 'promo-send' });
+                                                }
+                                            }}>
+                                                <div className="form-group">
+                                                    <label className="form-label">Subject / Title</label>
+                                                    <input className="form-input" name="title" placeholder="e.g. Flash Sale Live! ⚡" required />
                                                 </div>
-                                            </div>
+                                                <div className="form-group">
+                                                    <label className="form-label">Message Content</label>
+                                                    <textarea className="form-input" name="content" rows="4" placeholder="Write your message here..." required />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label className="form-label">Target Audience</label>
+                                                    <select className="form-select" name="target_role">
+                                                        <option value="consumer">All Customers</option>
+                                                        <option value="supplier">All Sellers</option>
+                                                    </select>
+                                                </div>
+                                                
+                                                <div style={{ margin: '24px 0', padding: '16px', background: 'rgba(99,102,241,0.05)', borderRadius: '12px' }}>
+                                                    <label className="form-label" style={{ marginBottom: '12px', display: 'block' }}>Delivery Channels</label>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                                                            <input type="checkbox" name="inapp" defaultChecked /> In-App Notification
+                                                        </label>
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                                                            <input type="checkbox" name="email" defaultChecked /> Email Service
+                                                        </label>
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                                                            <input type="checkbox" name="sms" /> SMS (Phone)
+                                                        </label>
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                                                            <input type="checkbox" name="whatsapp" /> WhatsApp
+                                                        </label>
+                                                    </div>
+                                                </div>
 
-                                            <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '14px' }}>
-                                                <FiSend /> Blast Announcement Now
-                                            </button>
-                                        </form>
+                                                <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '14px' }}>
+                                                    <FiSend /> Blast Announcement Now
+                                                </button>
+                                            </form>
+                                        </div>
+
+                                        <div className="glass-card" style={{ padding: '24px' }}>
+                                            <h3 style={{ fontSize: '1rem', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <FiList /> Previous Announcements
+                                            </h3>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '600px', overflowY: 'auto', paddingRight: '4px' }}>
+                                                {announcements.length === 0 ? (
+                                                    <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                                        No previous announcements found
+                                                    </div>
+                                                ) : (
+                                                    announcements.map(ann => (
+                                                        <div key={ann.id} style={{ 
+                                                            padding: '16px', 
+                                                            borderRadius: '12px', 
+                                                            background: 'var(--bg-primary)', 
+                                                            border: '1px solid var(--border)',
+                                                            position: 'relative'
+                                                        }}>
+                                                            <button 
+                                                                onClick={() => handleDeleteAnnouncement(ann.id)}
+                                                                style={{ 
+                                                                    position: 'absolute', top: '12px', right: '12px', 
+                                                                    color: 'var(--error)', background: 'transparent', border: 'none', 
+                                                                    cursor: 'pointer', padding: '4px' 
+                                                                }}
+                                                            >
+                                                                <FiTrash2 size={16} />
+                                                            </button>
+                                                            <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '4px', paddingRight: '24px' }}>{ann.title}</div>
+                                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px', lineHeight: '1.4' }}>{ann.content}</div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                                <span>Target: <span style={{ textTransform: 'capitalize', color: 'var(--action)', fontWeight: 600 }}>{ann.targetRole}</span></span>
+                                                                <span>{new Date(ann.createdAt).toLocaleDateString()}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}

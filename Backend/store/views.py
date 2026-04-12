@@ -20,6 +20,15 @@ class ProductListAPIView(ListCreateAPIView):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description', 'category__name']
     ordering_fields = ['price', 'created_at']
+    
+    def dispatch(self, request, *args, **kwargs):
+        try:
+            return super().dispatch(request, *args, **kwargs)
+        except Exception as e:
+            import traceback
+            print(f"ERROR in ProductListAPIView: {e}")
+            traceback.print_exc()
+            raise e
 
     def get_queryset(self):
         queryset = Product.objects.all()
@@ -101,30 +110,36 @@ class ProductStatsAPIView(APIView):
 
 class RecommendationsAPIView(APIView):
     def get(self, request):
-        limit_param = request.query_params.get('limit', 5)
         try:
-            limit = int(limit_param)
-            if limit <= 0:
+            limit_param = request.query_params.get('limit', 5)
+            try:
+                limit = int(limit_param)
+                if limit <= 0:
+                    limit = 5
+            except (ValueError, TypeError):
                 limit = 5
-        except (ValueError, TypeError):
-            limit = 5
 
-        if request.user.is_authenticated:
-            # AI recommendation based on past orders
-            from orders.models import OrderItem
-            past_orders = OrderItem.objects.filter(order__user=request.user)
-            if past_orders.exists():
-                from django.db.models import Count
-                top_category = past_orders.values('product__category').annotate(count=Count('product__category')).order_by('-count').first()
-                if top_category and top_category['product__category']:
-                    recs = Product.objects.filter(category_id=top_category['product__category']).order_by('-id')[:limit]
-                    serializer = ProductSerializer(recs, many=True)
-                    return Response(serializer.data)
-        
-        # Fallback to general popular products
-        recs = Product.objects.all().order_by('?')[:limit]  # Pseudo-random/popular mix
-        serializer = ProductSerializer(recs, many=True)
-        return Response(serializer.data)
+            if request.user.is_authenticated:
+                # AI recommendation based on past orders
+                from orders.models import OrderItem
+                past_orders = OrderItem.objects.filter(order__user=request.user)
+                if past_orders.exists():
+                    from django.db.models import Count
+                    top_category = past_orders.values('product__category').annotate(count=Count('product__category')).order_by('-count').first()
+                    if top_category and top_category['product__category']:
+                        recs = Product.objects.filter(category_id=top_category['product__category']).order_by('-id')[:limit]
+                        serializer = ProductSerializer(recs, many=True)
+                        return Response(serializer.data)
+            
+            # Fallback to general popular products
+            recs = Product.objects.all().order_by('?')[:limit]  # Pseudo-random/popular mix
+            serializer = ProductSerializer(recs, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            import traceback
+            print(f"ERROR in RecommendationsAPIView: {e}")
+            traceback.print_exc()
+            raise e
 
 class CategoryListCreateAPIView(ListCreateAPIView):
     queryset = Category.objects.all()

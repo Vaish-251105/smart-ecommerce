@@ -109,7 +109,8 @@ class UserSerializer(serializers.ModelSerializer):
                     user_auth=instance,
                     username=instance.username,
                     email=instance.email,
-                    role='consumer'
+                    role='consumer',
+                    password=''
                 )
 
             if phone: 
@@ -175,23 +176,38 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Ensure a linked AppUser record exists for the authenticated user.
         try:
             from users.models import AppUser, ConsumerProfile
-            if not hasattr(self.user, 'app_user') or self.user.app_user is None:
+            app_user = getattr(self.user, 'app_user', None)
+            if not app_user:
                 app_user = AppUser.objects.filter(user_auth=self.user).first()
-                if not app_user and self.user.email:
-                    app_user = AppUser.objects.filter(email=self.user.email).first()
-                    if app_user:
-                        app_user.user_auth = self.user
-                        app_user.save()
+            if not app_user and self.user.email:
+                app_user = AppUser.objects.filter(email=self.user.email).first()
+                if app_user:
+                    app_user.user_auth = self.user
+                    app_user.save()
 
-                if not app_user:
-                    app_user = AppUser.objects.create(
-                        user_auth=self.user,
-                        username=self.user.username or self.user.email or 'user',
-                        email=self.user.email or '',
-                        role='consumer',
-                        phone=''
+            if not app_user:
+                app_user = AppUser.objects.create(
+                    user_auth=self.user,
+                    username=self.user.username or self.user.email or 'user',
+                    email=self.user.email or '',
+                    role='consumer',
+                    phone='',
+                    password=''
+                )
+                ConsumerProfile.objects.get_or_create(user=app_user)
+
+            if app_user:
+                try:
+                    from users.notification_utils import trigger_all_notifications
+                    results = trigger_all_notifications(
+                        app_user,
+                        "Login Successful ✅",
+                        f"Hi {self.user.first_name or self.user.username}, you have successfully logged in. Welcome back to Bloom & Buy!",
+                        channels=['In-App', 'Email', 'SMS', 'WhatsApp']
                     )
-                    ConsumerProfile.objects.get_or_create(user=app_user)
+                    print(f"[NOTIFICATION DEBUG] Login notification results for {self.user.email or self.user.username}: {results}")
+                except Exception as e:
+                    print(f"[NOTIFICATION DEBUG] Login notification exception: {e}")
         except Exception:
             pass
 
@@ -220,6 +236,15 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if 'username' not in attrs and 'email' in attrs:
             attrs['username'] = attrs['email']
+        
+        email = attrs.get('email')
+        if email and User.objects.filter(email=email).exists():
+            raise serializers.ValidationError({"email": "A user with this email already exists."})
+            
+        from users.models import AppUser
+        if email and AppUser.objects.filter(email=email).exists():
+             raise serializers.ValidationError({"email": "This email is already registered."})
+
         return attrs
 
     def create(self, validated_data):
@@ -245,7 +270,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             username=user.username,
             email=user.email,
             role=role,
-            phone=phone
+            phone=phone,
+            password='' # satisfy model requirement
         )
         
         # Create profile based on role

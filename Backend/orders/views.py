@@ -43,11 +43,22 @@ class CheckoutAPIView(APIView):
             # Try to get AppUser for the request user
             app_user = AppUser.objects.filter(user_auth=request.user).first()
             if not app_user:
-                 return Response({"error": "User profile not found"}, status=404)
+                # Auto-create basic profile if missing (common in dev/admin created users)
+                app_user = AppUser.objects.create(
+                    user_auth=request.user,
+                    username=request.user.username,
+                    email=request.user.email,
+                    role='consumer'
+                )
                  
             address_obj = Address.objects.filter(id=address_id, user=app_user).first()
             if not address_obj:
                  return Response({"error": "Invalid address selected"}, status=404)
+            
+            # Sync phone to AppUser if missing
+            if not app_user.phone and address_obj.phone_number:
+                app_user.phone = address_obj.phone_number
+                app_user.save()
         except Exception as e:
             logger.error(f"Checkout error: Address lookup failed for ID {address_id}: {str(e)}")
             return Response({"error": "Error processing address"}, status=500)
@@ -91,13 +102,30 @@ class CheckoutAPIView(APIView):
         except ValueError as ve:
             if getattr(settings, 'DEBUG', False):
                 logger.warning(f"Razorpay keys missing; using mock checkout for Order {order.id}: {ve}")
-                Payment.objects.create(order=order, amount=total_price, is_successful=False, status='Pending')
+                Payment.objects.create(order=order, amount=total_price, is_successful=True, status='Success')
+                order.is_paid = True
+                order.status = "Confirmed"
+                order.payment_status = "Success"
+                order.save()
+
+                # Notify for Mock Order
+                from users.models import AppUser
+                buyer = AppUser.objects.filter(user_auth=order.user).first()
+                if buyer:
+                    trigger_all_notifications(
+                        buyer,
+                        "Order Confirmed! 🎉",
+                        f"Bloom & Buy: Thank you! Your Order #{order.id} for ₹{order.total_price} is confirmed. Track here: http://localhost:5173/orders/tracking/{order.id}",
+                        channels=['In-App', 'Email', 'SMS', 'WhatsApp'],
+                        phone=buyer.phone or order.delivery_address.get('phone')
+                    )
+
                 return Response({
                     "mock": True,
                     "order_id": order.id,
                     "total": float(total_price),
                     "currency": "INR",
-                    "message": "Demo checkout created because Razorpay keys are not configured."
+                    "message": "Demo checkout created. (Notifications triggered in console/DB)."
                 })
             logger.error(f"Checkout config error: {ve}")
             return Response({"error": str(ve)}, status=503)
@@ -137,11 +165,14 @@ class VerifyPaymentView(APIView):
                 payment = get_object_or_404(Payment, razorpay_order_id=rid)
                 payment.is_successful = True
                 payment.razorpay_payment_id = pid
+                payment.transaction_id = pid
+                payment.status = 'Success'
                 payment.save()
                 
                 order = payment.order
                 order.is_paid = True
                 order.status = "Confirmed"
+                order.payment_status = "Success"
                 order.save()
 
                 # Reduce Stock & Notify Seller
@@ -151,18 +182,67 @@ class VerifyPaymentView(APIView):
                     from users.models import AppUser
                     seller = AppUser.objects.filter(user_auth=item.product.supplier).first()
                     if seller:
-                        trigger_all_notifications(seller, "New Order Received! 📦", f"You have a new order for {item.product.name} (Qty: {item.quantity})", channels=['In-App', 'Email', 'WhatsApp'])
+                        seller_message = (
+                            f"New order received!\nOrder ID: {order.id}\nProduct: {item.product.name}\n"
+                            f"Quantity: {item.quantity}\nPrice: ₹{item.price}\n"
+                            f"Customer: {order.user.email or order.user.username}\nPayment ID: {pid}\n"
+                            "Please fulfill this order as soon as possible."
+                        )
+                        seller_results = trigger_all_notifications(
+                            seller,
+                            "New Order Received! 📦",
+                            seller_message,
+                            channels=['In-App', 'Email', 'WhatsApp'],
+                            phone=seller.phone
+                        )
 
                 # Notify Buyer
                 from users.models import AppUser
                 buyer = AppUser.objects.filter(user_auth=order.user).first()
                 if buyer:
-                    trigger_all_notifications(buyer, "Order Confirmed! 🎉", f"Thank you for your purchase! Your order #{order.id} has been placed successfully.", channels=['In-App', 'Email', 'SMS', 'WhatsApp'])
+                    items_detail = "\n".join([
+                        f"- {item.product.name} x{item.quantity} @ ₹{item.price}"
+                        for item in order.items.all()
+                    ])
+                    address = order.delivery_address or {}
+                    address_text = (
+                        f"{address.get('line1', '')}, {address.get('city', '')}, {address.get('state', '')} {address.get('pincode', '')}".strip()
+                    )
+                    tracking_id = order.tracking_id or payment.razorpay_payment_id or 'Pending'
+                    buyer_message = (
+                        f"Order Confirmed! 🎉\n\n"
+                        f"Hi {buyer.user_auth.first_name or 'there'},\n"
+                        f"Thank you for your order! It's being processed and will be shipped soon.\n\n"
+                        f"📦 Order Details:\n"
+                        f"Order ID: {order.id}\n"
+                        f"Total Amount: ₹{order.total_price}\n"
+                        f"Payment Status: Paid (ID: {pid})\n"
+                        f"Tracking ID: {tracking_id}\n\n"
+                        f"🛒 Items:\n{items_detail}\n\n"
+                        f"📍 Shipping To:\n{address_text}\n\n"
+                        f"Track your package here: http://localhost:5173/orders/{order.id}\n\n"
+                        f"Thank you for choosing Bloom & Buy!"
+                    )
+                    buyer_results = trigger_all_notifications(
+                        buyer,
+                        "Order Confirmed! 🎉",
+                        f"Bloom & Buy: Your Order #{order.id} has been placed successfully. Amount: ₹{order.total_price}. Track your package: http://localhost:5173/orders/tracking/{order.id}",
+                        channels=['In-App', 'Email', 'SMS', 'WhatsApp'],
+                        phone=address.get('phone') or address.get('phone_number') or buyer.phone
+                    )
 
                 # Clear Cart
                 Cart.objects.filter(user=order.user).delete()
-                logger.info(f"Payment successful for Order {order.id}")
-                return Response({"message": "Payment verified and order confirmed!", "order_id": order.id})
+                notification_warning = None
+                if buyer_results.get('Email') == 'Skipped':
+                    notification_warning = "Email skipped (Demo Mode - Check .env)"
+
+                return Response({
+                    "message": "Payment verified and order confirmed!", 
+                    "order_id": order.id,
+                    "notification_status": buyer_results,
+                    "warning": notification_warning
+                })
             except Exception as e:
                 logger.error(f"Error securing order after payment: {str(e)}")
                 return Response({"error": "Payment received but order update failed. Please contact support."}, status=500)
@@ -239,9 +319,49 @@ class UpdateOrderStatusView(APIView):
     permission_classes = [IsAdminUser]
     def patch(self, request, order_id):
         order = get_object_or_404(Order, id=order_id)
-        order.status = request.data.get("status", order.status)
-        order.save()
-        return Response({"message": "Status updated"})
+        old_status = order.status
+        new_status = request.data.get("status")
+        
+        if new_status and old_status != new_status:
+            order.status = new_status
+            order.save()
+            
+            # Add to tracking history
+            history = order.tracking_history or []
+            history.append({
+                'status': new_status,
+                'time': timezone.now().isoformat(),
+                'message': f"Your order status has been updated to {new_status}."
+            })
+            order.tracking_history = history
+            order.save()
+
+            # Notify Buyer
+            from users.models import AppUser
+            buyer = AppUser.objects.filter(user_auth=order.user).first()
+            if buyer:
+                status_messages = {
+                    'Packed': "Your order has been packed and is ready for shipment! 📦",
+                    'Shipped': f"Great news! Your order #{order.id} has been shipped. 🚚 Tracking ID: {order.tracking_id or 'Pending'}",
+                    'In Transit': "Your order is on the move and is currently in transit. 🚛",
+                    'Out for Delivery': "Get ready! Your order is out for delivery and will reach you soon. 🏠",
+                    'Delivered': "Your order has been delivered successfully! Enjoy your purchase. ✨",
+                }
+                
+                msg = status_messages.get(new_status, f"The status of your order #{order.id} has been updated to {new_status}.")
+                notif_results = trigger_all_notifications(
+                    buyer,
+                    f"Order Update: {new_status} 📦",
+                    f"Bloom & Buy: Your Order #{order.id} is now {new_status}. View details: http://localhost:5173/orders/tracking/{order.id}",
+                    channels=['In-App', 'Email', 'SMS', 'WhatsApp'],
+                    phone=buyer.phone or (order.delivery_address or {}).get('phone')
+                )
+                return Response({
+                    "message": f"Status updated to {order.status}",
+                    "notification_status": notif_results
+                })
+
+        return Response({"message": f"Status updated to {order.status}"})
 
 
 def generate_invoice(request, order_id):
