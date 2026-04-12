@@ -80,7 +80,7 @@ const HomePage = () => {
                     productsAPI.getAll({ limit: 8, sort: 'price_asc' })
                 ]);
                 // Filter out products with missing images
-                const filterValid = (arr) => (arr || []).filter(p => p.image && p.image.trim() !== '');
+                const filterValid = (arr) => Array.isArray(arr) ? arr.filter(p => p.image && p.image.trim() !== '') : [];
                 setFeatured(filterValid(f.data).slice(0, 8));
                 setDeals(filterValid(d.data).slice(0, 4));
 
