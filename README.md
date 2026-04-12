@@ -1,110 +1,97 @@
-﻿# smart-ecommerce
+# 🛒 Bloom & Buy - Smart Ecommerce Platform
 
-# 🛒 Smart Ecommerce Backend (Django REST Framework)
+A production-ready, full-stack E-commerce platform built with **Django REST Framework** (Backend) and **React Vite** (Frontend).
 
-# Project Description:- 
-A fully functional Ecommerce Backend built using Django and Django REST Framework.
-This project includes cart management, order processing, payment integration, invoice generation, authentication, and role-based user handling.
+## 🔗 Live Demo
+- **Frontend:** [https://smart-ecommerce-frontend.onrender.com](https://smart-ecommerce-frontend.onrender.com)
+- **Backend API:** [https://smart-ecommerce-backend.onrender.com](https://smart-ecommerce-backend.onrender.com)
 
-## 🚀 Features
+---
 
-- User Authentication (JWT)
-- Custom User Model
-- Product & Category APIs
-- Cart Management System
-- Order Creation from Cart
-- Payment Processing
-- Order Status Management
-- Invoice PDF Generation
-- Admin Panel Integration
-- Protected APIs with Permissions
+## 🚀 Key Features
+
+### 🔔 Multi-Channel Notification System
+- **Professional HTML Emails:** Sent automatically for registration, subscriptions, order placement, and payment confirmation.
+- **SMS & WhatsApp Alerts:** Powered by **Twilio**, providing real-time order tracking and status updates to your phone.
+- **Branded Experience:** All communications are custom-templated under the "Bloom & Buy" brand.
+
+### 💳 Secure Payments & Backend
+- **Razorpay Integration:** Secure checkout and payment processing.
+- **Order Management:** Automated cart-to-order workflow.
+- **Invoice Generation:** Automatic PDF invoice generation for every successful order.
+- **Role-Based Access:** Distinct experiences for Consumers and Suppliers (Sellers).
+
+### 🤖 Smart Features
+- **AI-Powered Support:** Integrated OpenAI for smart customer queries.
+- **Interactive Dashboard:** Full-featured admin and seller panels for product and order management.
+
+---
 
 ## 🏗 Tech Stack
 
-- Python
-- Django
-- Django REST Framework
-- MySQL
-- JWT Authentication
-- ReportLab (for invoice PDF)
+- **Backend:** Python (Django, DRF, PostgreSQL/SQLite)
+- **Frontend:** React JS (Vite, Tailwind CSS/Vanilla CSS)
+- **Communication:** Twilio (SMS/WhatsApp), SMTP (Email)
+- **Deployment:** Render (Infrastructure as Code via `render.yaml`)
+- **Authentication:** JWT (JSON Web Tokens)
+
+---
 
 ## 📂 Project Structure
 
-Smart_Ecommerce_Backend/
- └── Backend/
-      ├── accounts/
-      ├── orders/
-      ├── store/
-      ├── users/
-      └── manage.py
+```text
+Smart_Ecommerce/
+├── Backend/          # Django REST APIs & Business Logic
+│   ├── accounts/     # User Auth & Google Login
+│   ├── orders/       # Order & Payment Processing
+│   ├── store/        # Product & Category Management
+│   ├── users/        # Profiles & Email/SMS Utilities
+│   └── manage.py
+└── frontend/         # React SPA
+    ├── src/          # Components & State Management
+    └── public/       # Static assets
+```
 
-## ⚙️ Installation
+---
 
-1. Clone the repository
-   git clone https://github.com/yourusername/smart-ecommerce-backend.git
+## ⚙️ Installation & Setup (Local)
 
-2. Navigate into project
-   cd Smart_Ecommerce_Backend
+1. **Clone the Repo**
+   ```bash
+   git clone https://github.com/Vaish-251105/smart-ecommerce.git
+   ```
 
-3. Create virtual environment
+2. **Backend Setup**
+   ```bash
+   cd Backend
    python -m venv venv
-
-4. Activate venv
-   venv\Scripts\activate   (Windows)
-
-5. Install dependencies
+   source venv/bin/activate # or venv\Scripts\activate on Windows
    pip install -r requirements.txt
-
-6. Run migrations
    python manage.py migrate
-
-7. Start server
    python manage.py runserver
+   ```
 
-## 🔑 Important API Endpoints
+3. **Frontend Setup**
+   ```bash
+   cd ../frontend
+   npm install
+   npm run dev
+   ```
 
-Authentication:
-POST /api/auth/register/
-POST /api/auth/login/
+---
 
-Products:
-GET /api/products/
-GET /api/products/<id>/
+## 🔑 Environment Variables
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | Postgres Database URL (Production) |
+| `EMAIL_HOST_USER` | SMTP Username |
+| `EMAIL_HOST_PASSWORD` | SMTP App Password |
+| `TWILIO_ACCOUNT_SID` | Twilio Account SID |
+| `TWILIO_AUTH_TOKEN` | Twilio Auth Token |
+| `RAZORPAY_KEY_ID` | Razorpay Public Key |
 
-Cart:
-GET /api/cart/
-POST /api/cart/add/
-
-Orders:
-POST /api/orders/checkout/
-GET /api/orders/my-orders/
-POST /api/orders/pay/<order_id>/
-
-Invoice:
-GET /api/orders/invoice/<order_id>/
-
-## 🧾 Order Flow
-
-1. User adds products to cart
-2. Checkout creates order
-3. Payment API updates order status
-4. Invoice generated as PDF
-
-## 🔒 Security
-
-- JWT Protected APIs
-- Order ownership validation
-- Payment double-processing prevention
-- Role-based permissions
-
-## 🎯 Future Improvements
-
-- Stripe Payment Integration
-- Refund System
-- Order Tracking
-- Deployment on Render
-- Frontend Integration (React)
+---
 
 ## 👩‍💻 Author
-
-Developed by Vaishnavi
+**Developed by Vaishnavi**
+*Project for Scalable E-commerce Application*
