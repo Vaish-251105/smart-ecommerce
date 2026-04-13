@@ -152,85 +152,148 @@ graph TD
 
 ---
 
-## 3. Database Relationship Diagram (DRD)
+## 3. Comprehensive Entity Relationship (ER) Diagram
+
+This diagram represents the full schema with all significant fields (attributes) to show the "data" structure of each table.
 
 ```mermaid
 erDiagram
-    DjangoUser ||--|| AppUser : "linked-to"
-    AppUser ||--o| SupplierProfile : "extends-as"
-    AppUser ||--o| ConsumerProfile : "extends-as"
-    AppUser ||--o{ Address : "possesses"
-    AppUser ||--o{ Notification : "receives"
-    
-    AppUser ||--o{ Cart : "manages"
-    Cart ||--o{ CartItem : "contains"
-    Product ||--o{ CartItem : "stored-in"
-    
-    DjangoUser ||--o{ Product : "supplies"
-    Category ||--o{ Product : "organizes"
-    
-    DjangoUser ||--o{ Order : "places"
-    Order ||--o{ OrderItem : "lists"
-    Product ||--o{ OrderItem : "sold-in"
-    Order ||--|| Payment : "paid-via"
-    
-    AppUser ||--o{ ChatbotLog : "interacts"
-    Product ||--o{ ProductAIScore : "evaluated-by"
-```
+    %% Identity & Profiles
+    APP_USER {
+        int id PK
+        string username
+        string email
+        string password
+        string role
+        string phone
+        boolean is_active
+        datetime created_at
+    }
+    SUPPLIER_PROFILE {
+        int id PK
+        int user_id FK
+        string company_name
+        string gst_number
+        string address
+        float rating
+        boolean verified
+    }
+    CONSUMER_PROFILE {
+        int id PK
+        int user_id FK
+        decimal wallet_balance
+        boolean is_opted_in
+    }
+    ADDRESS {
+        int id PK
+        int user_id FK
+        string full_name
+        string city
+        string state
+        string pincode
+        boolean is_default
+    }
 
----
-
-## 4. Entity Relationship (ER) Diagram (Detailed Architecture)
-
-```mermaid
-erDiagram
+    %% Store & Products
+    CATEGORY {
+        int id PK
+        string name
+        string slug
+    }
     PRODUCT {
         int id PK
+        int supplier_id FK
+        int category_id FK
         string name
         decimal price
         int stock
         string approval_status
         datetime created_at
     }
-    APP_USER {
+    CART {
         int id PK
-        string username
-        string role
-        string phone
-        string email
+        int user_id FK
+        datetime created_at
     }
+    CART_ITEM {
+        int id PK
+        int cart_id FK
+        int product_id FK
+        int quantity
+    }
+    WISHLIST {
+        int id PK
+        int user_id FK
+    }
+
+    %% Transactions
     ORDER {
         int id PK
+        int user_id FK
         decimal total_price
         string status
         string payment_status
+        string tracking_id
         datetime created_at
     }
-    SUPPLIER_PROFILE {
+    ORDER_ITEM {
         int id PK
-        string company_name
-        string gst_number
-        boolean verified
+        int order_id FK
+        int product_id FK
+        int quantity
+        decimal price
     }
     PAYMENT {
         int id PK
-        string razorpay_order_id
+        int order_id FK
         string transaction_id
+        string razorpay_order_id
         decimal amount
         boolean is_successful
     }
-    CATEGORY {
+
+    %% AI & Support
+    CHATBOT_LOG {
         int id PK
-        string name
-        string slug
+        int user_id FK
+        string query
+        string intent
+        string response
+    }
+    PRODUCT_AI_SCORE {
+        int id PK
+        int product_id FK
+        float demand_score
+        float trust_score
+    }
+    MEMBERSHIP_PLAN {
+        int id PK
+        int user_id FK
+        string membership_type
+        date membership_end_date
+        decimal discount_rate
     }
 
-    APP_USER ||--o| SUPPLIER_PROFILE : "has"
+    %% Relationships
+    APP_USER ||--o| SUPPLIER_PROFILE : "as-seller"
+    APP_USER ||--o| CONSUMER_PROFILE : "as-buyer"
+    APP_USER ||--o{ ADDRESS : "saved-at"
     APP_USER ||--o{ ORDER : "places"
-    PRODUCT }o--|| CATEGORY : "belongs-to"
-    ORDER ||--|| PAYMENT : "settled-by"
-    ORDER ||--o{ PRODUCT : "includes"
+    APP_USER ||--o| CART : "owns"
+    APP_USER ||--o| WISHLIST : "curates"
+    APP_USER ||--o{ CHATBOT_LOG : "queries"
+    APP_USER ||--o{ MEMBERSHIP_PLAN : "subscribed-to"
+
+    CATEGORY ||--o{ PRODUCT : "classifies"
+    PRODUCT ||--o{ CART_ITEM : "added-to"
+    CART ||--o{ CART_ITEM : "holds"
+    
+    ORDER ||--o{ ORDER_ITEM : "contains"
+    PRODUCT ||--o{ ORDER_ITEM : "purchased"
+    ORDER ||--|| PAYMENT : "settles"
+    
+    PRODUCT ||--o| PRODUCT_AI_SCORE : "scored-as"
 ```
 
 ---
-*End of Technical Specification Version 2.1*
+*End of Technical Specification Version 2.2*
