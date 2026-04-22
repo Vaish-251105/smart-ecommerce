@@ -18,6 +18,7 @@ from .models import Order, OrderItem, Payment
 from .serializers import OrderSerializer
 from .razorpay_utils import create_razorpay_order, verify_signature
 from users.notification_utils import trigger_all_notifications
+from .invoice_utils import generate_invoice_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,8 @@ class CheckoutAPIView(APIView):
         if subtotal < 500: shipping = Decimal('50.00')
 
         tax_total = ((subtotal - discount) * Decimal('0.18')).quantize(Decimal('0.01'))
+        cgst = (tax_total / 2).quantize(Decimal('0.01'))
+        sgst = (tax_total - cgst).quantize(Decimal('0.01'))
         total_price = subtotal - discount + tax_total + shipping
 
         order = Order.objects.create(
@@ -89,6 +92,9 @@ class CheckoutAPIView(APIView):
             status="Pending", 
             subtotal=subtotal,
             discount=discount,
+            cgst=cgst,
+            sgst=sgst,
+            shipping=shipping,
             total_price=total_price,
             delivery_address=delivery_address_snapshot
         )
@@ -112,12 +118,17 @@ class CheckoutAPIView(APIView):
                 from users.models import AppUser
                 buyer = AppUser.objects.filter(user_auth=order.user).first()
                 if buyer:
+                    invoice_pdf = generate_invoice_pdf(order)
+                    email_attachments = [(f"Invoice_Order_{order.id}.pdf", invoice_pdf, "application/pdf")]
+                    invoice_link = f"http://localhost:8000/api/orders/invoice/{order.id}/"
+
                     trigger_all_notifications(
                         buyer,
                         "Order Confirmed! 🎉",
-                        f"Bloom & Buy: Thank you! Your Order #{order.id} for ₹{order.total_price} is confirmed. Track here: http://localhost:5173/orders/tracking/{order.id}",
+                        f"Bloom & Buy: Thank you! Your Order #{order.id} for Rs.{order.total_price} is confirmed. Track here: http://localhost:5173/orders/tracking/{order.id}. Download Invoice: {invoice_link}",
                         channels=['In-App', 'Email', 'SMS', 'WhatsApp'],
-                        phone=buyer.phone or order.delivery_address.get('phone')
+                        phone=buyer.phone or order.delivery_address.get('phone'),
+                        email_attachments=email_attachments
                     )
 
                 return Response({
@@ -184,7 +195,7 @@ class VerifyPaymentView(APIView):
                     if seller:
                         seller_message = (
                             f"New order received!\nOrder ID: {order.id}\nProduct: {item.product.name}\n"
-                            f"Quantity: {item.quantity}\nPrice: ₹{item.price}\n"
+                            f"Quantity: {item.quantity}\nPrice: Rs.{item.price}\n"
                             f"Customer: {order.user.email or order.user.username}\nPayment ID: {pid}\n"
                             "Please fulfill this order as soon as possible."
                         )
@@ -201,7 +212,7 @@ class VerifyPaymentView(APIView):
                 buyer = AppUser.objects.filter(user_auth=order.user).first()
                 if buyer:
                     items_detail = "\n".join([
-                        f"- {item.product.name} x{item.quantity} @ ₹{item.price}"
+                        f"- {item.product.name} x{item.quantity} @ Rs.{item.price}"
                         for item in order.items.all()
                     ])
                     address = order.delivery_address or {}
@@ -215,7 +226,7 @@ class VerifyPaymentView(APIView):
                         f"Thank you for your order! It's being processed and will be shipped soon.\n\n"
                         f"📦 Order Details:\n"
                         f"Order ID: {order.id}\n"
-                        f"Total Amount: ₹{order.total_price}\n"
+                        f"Total Amount: Rs.{order.total_price}\n"
                         f"Payment Status: Paid (ID: {pid})\n"
                         f"Tracking ID: {tracking_id}\n\n"
                         f"🛒 Items:\n{items_detail}\n\n"
@@ -223,12 +234,23 @@ class VerifyPaymentView(APIView):
                         f"Track your package here: http://localhost:5173/orders/{order.id}\n\n"
                         f"Thank you for choosing Bloom & Buy!"
                     )
+                    # Generate Invoice PDF for attachment
+                    invoice_pdf = generate_invoice_pdf(order)
+                    email_attachments = [
+                        (f"Invoice_Order_{order.id}.pdf", invoice_pdf, "application/pdf")
+                    ]
+
+                    # Add invoice link to WhatsApp/SMS message
+                    invoice_link = f"http://localhost:8000/api/orders/invoice/{order.id}/" # Replace with real domain in prod
+                    buyer_message += f"\n\n📄 Download Invoice: {invoice_link}"
+
                     buyer_results = trigger_all_notifications(
                         buyer,
                         "Order Confirmed! 🎉",
-                        f"Bloom & Buy: Your Order #{order.id} has been placed successfully. Amount: ₹{order.total_price}. Track your package: http://localhost:5173/orders/tracking/{order.id}",
+                        f"Bloom & Buy: Your Order #{order.id} has been placed successfully. Amount: Rs.{order.total_price}. Track your package: http://localhost:5173/orders/tracking/{order.id}. Download Invoice: {invoice_link}",
                         channels=['In-App', 'Email', 'SMS', 'WhatsApp'],
-                        phone=address.get('phone') or address.get('phone_number') or buyer.phone
+                        phone=address.get('phone') or address.get('phone_number') or buyer.phone,
+                        email_attachments=email_attachments
                     )
 
                 # Clear Cart
@@ -365,36 +387,11 @@ class UpdateOrderStatusView(APIView):
 
 
 def generate_invoice(request, order_id):
+    from .invoice_utils import generate_invoice_pdf
     order = get_object_or_404(Order, id=order_id, user=request.user)
-    response = HttpResponse(content_type='application/pdf')
+    
+    pdf_content = generate_invoice_pdf(order)
+    
+    response = HttpResponse(pdf_content, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="order_{order.id}_invoice.pdf"'
-
-    buffer = canvas.Canvas(response)
-    buffer.setFont('Helvetica-Bold', 18)
-    buffer.drawString(50, 800, f'Invoice for Order #{order.id}')
-    buffer.setFont('Helvetica', 12)
-    buffer.drawString(50, 770, f'Date: {order.created_at.strftime("%Y-%m-%d %H:%M")})')
-    buffer.drawString(50, 750, f'Status: {order.status}')
-    buffer.drawString(50, 730, f'Total: ₹{order.total_price}')
-    buffer.drawString(50, 710, 'Delivery Address:')
-
-    y = 690
-    for key, value in order.delivery_address.items():
-        buffer.drawString(60, y, f'{key.replace("_", " ").capitalize()}: {value}')
-        y -= 20
-
-    y -= 20
-    buffer.drawString(50, y, 'Items:')
-    y -= 20
-
-    for item in order.items.all():
-        buffer.drawString(60, y, f'{item.quantity} × {item.product.name} @ ₹{item.price} = ₹{item.quantity * item.price}')
-        y -= 20
-        if y < 80:
-            buffer.showPage()
-            buffer.setFont('Helvetica', 12)
-            y = 800
-
-    buffer.showPage()
-    buffer.save()
     return response

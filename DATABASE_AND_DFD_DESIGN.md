@@ -148,7 +148,6 @@ graph TD
 | **ChatbotLog** | `user_id` | INT | FK (AppUser) | History of AI interactions. |
 | | `query` | TEXT | | User's question. |
 | | `response` | TEXT | | AI's generated answer. |
-| **ProductAIScore**| `product_id`| INT | FK (Product) | Machine learning rating. |
 
 ---
 
@@ -260,19 +259,6 @@ erDiagram
         string intent
         string response
     }
-    PRODUCT_AI_SCORE {
-        int id PK
-        int product_id FK
-        float demand_score
-        float trust_score
-    }
-    MEMBERSHIP_PLAN {
-        int id PK
-        int user_id FK
-        string membership_type
-        date membership_end_date
-        decimal discount_rate
-    }
 
     %% Relationships
     APP_USER ||--o| SUPPLIER_PROFILE : "as-seller"
@@ -282,7 +268,6 @@ erDiagram
     APP_USER ||--o| CART : "owns"
     APP_USER ||--o| WISHLIST : "curates"
     APP_USER ||--o{ CHATBOT_LOG : "queries"
-    APP_USER ||--o{ MEMBERSHIP_PLAN : "subscribed-to"
 
     CATEGORY ||--o{ PRODUCT : "classifies"
     PRODUCT ||--o{ CART_ITEM : "added-to"
@@ -291,8 +276,6 @@ erDiagram
     ORDER ||--o{ ORDER_ITEM : "contains"
     PRODUCT ||--o{ ORDER_ITEM : "purchased"
     ORDER ||--|| PAYMENT : "settles"
-    
-    PRODUCT ||--o| PRODUCT_AI_SCORE : "scored-as"
 ```
 
 ---

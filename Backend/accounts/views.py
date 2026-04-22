@@ -90,6 +90,7 @@ class GoogleLoginView(APIView):
         # 2. Get or Create the AppUser (users app)
         from users.models import AppUser, ConsumerProfile, SupplierProfile
         app_user = AppUser.objects.filter(email=email).first()
+        phone_from_req = request.data.get('phone', '')
         
         if not app_user:
             # Create new AppUser if email doesn't exist at all
@@ -98,12 +99,14 @@ class GoogleLoginView(APIView):
                 username=email,
                 email=email,
                 role='consumer',
-                phone='',
+                phone=phone_from_req,
                 password=''
             )
-        elif not app_user.user_auth:
-            # Link existing AppUser to this auth user if not linked
-            app_user.user_auth = user
+        else:
+            if not app_user.user_auth:
+                app_user.user_auth = user
+            if phone_from_req and not app_user.phone:
+                app_user.phone = phone_from_req
             app_user.save()
             
         # 3. Ensure appropriate profile exists
@@ -119,6 +122,8 @@ class GoogleLoginView(APIView):
         profile.name = name
         if request.data.get('avatar'):
             profile.avatar = request.data.get('avatar')
+        if phone_from_req:
+            profile.phone = phone_from_req
         profile.save()
 
         # 5. Send login success notification and promotional messages

@@ -11,11 +11,8 @@ from .email_templates import (
 
 logger = logging.getLogger(__name__)
 
-# Twilio Setup (Using placeholders if not in settings)
-TWILIO_ACCOUNT_SID = getattr(settings, 'TWILIO_ACCOUNT_SID', None)
-TWILIO_AUTH_TOKEN = getattr(settings, 'TWILIO_AUTH_TOKEN', None)
-TWILIO_PHONE_NUMBER = getattr(settings, 'TWILIO_PHONE_NUMBER', None)
-TWILIO_WHATSAPP_NUMBER = getattr(settings, 'TWILIO_WHATSAPP_NUMBER', None)
+# Twilio Setup will be fetched from settings inside functions to ensure real-time updates.
+
 
 # Local log for debugging (so user can see messages without working SMTP)
 LOG_FILE = os.path.join(settings.BASE_DIR, 'notifications.log')
@@ -38,18 +35,24 @@ def normalize_phone_number(phone):
     if value.startswith('whatsapp:'):
         value = value[len('whatsapp:'):]
 
-    digits = ''.join(ch for ch in value if ch.isdigit() or ch == '+')
+    # Remove all non-digits, keep leading '+' if present
+    digits = ''.join(ch for ch in value if ch.isdigit())
+    has_plus = value.startswith('+')
+
     if not digits:
         return None
 
-    if digits.startswith('+'):
-        return digits
-
-    # Minimal logic for India as a default fallback if 10 digits
-    if len(digits) == 10:
+    # Handle India case: if 10 digits and no country code, add +91
+    if len(digits) == 10 and not has_plus:
         return f'+91{digits}'
-    if len(digits) == 11 and digits.startswith('0'):
-        return f'+91{digits[1:]}'
+    
+    # Handle India case: if 12 digits starting with 91, add +
+    if len(digits) == 12 and digits.startswith('91') and not has_plus:
+        return f'+{digits}'
+
+    # Otherwise just return digits with +
+    if has_plus:
+        return f'+{digits}'
     return f'+{digits}'
 
 def send_web_notification(user, title, message):
@@ -65,9 +68,10 @@ def send_web_notification(user, title, message):
         status='Sent'
     )
 
-def send_email_notification(to_email, subject, message, app_user=None, html_content=None):
+def send_email_notification(to_email, subject, message, app_user=None, html_content=None, attachments=None):
     """
     Sends an email using Django's SMTP backend and logs to DB.
+    'attachments' should be a list of tuples: (filename, content, mimetype)
     Returns status: 'Sent', 'Skipped', or 'Failed'.
     """
     if not to_email:
@@ -90,6 +94,10 @@ def send_email_notification(to_email, subject, message, app_user=None, html_cont
             )
             if html_content:
                 msg.attach_alternative(html_content, "text/html")
+            
+            if attachments:
+                for filename, content, mimetype in attachments:
+                    msg.attach(filename, content, mimetype)
             
             msg.send(fail_silently=False)
             log_to_file("EMAIL", to_email, f"Subject: {subject}\n{message}")
@@ -114,27 +122,58 @@ def send_sms_notification(to_phone, message, app_user=None):
     Sends an SMS via Twilio and logs to DB.
     """
     if not to_phone:
-        return 'Failed'
+        logger.warning("SMS skipped: No phone number provided.")
+        return 'Skipped'
 
     status_val = 'Failed'
     normalized_phone = normalize_phone_number(to_phone)
 
+    # Fetch from settings
+    twilio_sid = getattr(settings, 'TWILIO_ACCOUNT_SID', None)
+    twilio_token = getattr(settings, 'TWILIO_AUTH_TOKEN', None)
+    twilio_phone = getattr(settings, 'TWILIO_PHONE_NUMBER', None)
+
     # Check for placeholder credentials
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or 'AC...' in str(TWILIO_ACCOUNT_SID) or not TWILIO_PHONE_NUMBER or '+1...' in str(TWILIO_PHONE_NUMBER):
-        log_to_file("SMS", normalized_phone or to_phone, message)
-        print(f"--- SMS LOGGED TO notifications.log ---")
+    is_placeholder = (
+        not twilio_sid or 
+        not twilio_token or 
+        str(twilio_sid).startswith('AC...') or 
+        not twilio_phone or 
+        str(twilio_phone) == '+1...'
+    )
+
+
+    if is_placeholder:
+        log_to_file("SMS_SKIPPED", normalized_phone or to_phone, f"[PLACEHOLDER CREDENTIALS] {message}")
+        print(f"--- SMS SKIPPED (Placeholder Credentials) ---")
         status_val = 'Skipped'
     elif not normalized_phone:
         logger.warning(f"SMS failed: Could not normalize phone {to_phone}")
+        log_to_file("SMS_ERROR", to_phone, "Failed to normalize phone number.")
         status_val = 'Failed'
     else:
         try:
-            client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-            client.messages.create(body=message, from_=TWILIO_PHONE_NUMBER, to=normalized_phone)
-            log_to_file("SMS", normalized_phone, message)
-            status_val = 'Sent'
+            client = Client(twilio_sid, twilio_token)
+            twilio_msg = client.messages.create(body=message, from_=twilio_phone, to=normalized_phone)
+            
+            if twilio_msg.error_code:
+                error_info = f"Error {twilio_msg.error_code}: {twilio_msg.error_message}"
+                log_to_file("SMS_FAILED", normalized_phone, f"{error_info}\nBODY: {message}")
+                status_val = 'Sent' # We log it as sent to Twilio, but failed in delivery
+            else:
+                log_to_file("SMS_SENT", normalized_phone, message)
+                status_val = 'Sent'
+
         except Exception as e:
-            logger.warning(f"SMS Failed to {normalized_phone}: {e}")
+            err_str = str(e)
+            logger.warning(f"SMS Failed to {normalized_phone}: {err_str}")
+            # Identify common trial account errors (Twilio Error 21608)
+            log_tag = "SMS_EXCEPTION"
+            if "21608" in err_str:
+                log_tag = "SMS_TRIAL_ERROR"
+                print(f"--- SMS FAILED: Recipient {normalized_phone} is not verified (Twilio Trial Account limit) ---")
+            
+            log_to_file(log_tag, normalized_phone, err_str)
             status_val = 'Failed'
 
     if app_user:
@@ -152,31 +191,66 @@ def send_whatsapp_notification(to_phone, message, app_user=None):
     Sends a WhatsApp message via Twilio and logs to DB.
     """
     if not to_phone:
-        return 'Failed'
+        logger.warning("WhatsApp skipped: No phone number provided.")
+        return 'Skipped'
 
     status_val = 'Failed'
     normalized_phone = normalize_phone_number(to_phone)
 
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or 'AC...' in str(TWILIO_ACCOUNT_SID) or not TWILIO_WHATSAPP_NUMBER or '+1...' in str(TWILIO_WHATSAPP_NUMBER):
-        log_to_file("WHATSAPP", normalized_phone or to_phone, message)
-        print(f"--- WHATSAPP LOGGED TO notifications.log ---")
+    # Fetch from settings
+    twilio_sid = getattr(settings, 'TWILIO_ACCOUNT_SID', None)
+    twilio_token = getattr(settings, 'TWILIO_AUTH_TOKEN', None)
+    twilio_whatsapp = getattr(settings, 'TWILIO_WHATSAPP_NUMBER', None)
+
+    is_placeholder = (
+        not twilio_sid or 
+        not twilio_token or 
+        str(twilio_sid).startswith('AC...') or 
+        not twilio_whatsapp or 
+        str(twilio_whatsapp).endswith('+1...') # Flexible check
+    )
+
+
+    if is_placeholder:
+        log_to_file("WHATSAPP_SKIPPED", normalized_phone or to_phone, f"[PLACEHOLDER CREDENTIALS] {message}")
+        print(f"--- WHATSAPP SKIPPED (Placeholder Credentials) ---")
         status_val = 'Skipped'
     elif not normalized_phone:
         logger.warning(f"WhatsApp failed: Could not normalize phone {to_phone}")
+        log_to_file("WHATSAPP_ERROR", to_phone, "Failed to normalize phone number.")
         status_val = 'Failed'
     else:
         try:
-            client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+            client = Client(twilio_sid, twilio_token)
             formatted_to = f'whatsapp:{normalized_phone}'
-            formatted_from = TWILIO_WHATSAPP_NUMBER
+            formatted_from = twilio_whatsapp
             if not str(formatted_from).startswith('whatsapp:'):
                 formatted_from = f'whatsapp:{formatted_from}'
             
-            client.messages.create(body=message, from_=formatted_from, to=formatted_to)
-            log_to_file("WHATSAPP", normalized_phone, message)
-            status_val = 'Sent'
+            twilio_msg = client.messages.create(body=message, from_=formatted_from, to=formatted_to)
+
+            
+            if twilio_msg.error_code:
+                error_info = f"Error {twilio_msg.error_code}: {twilio_msg.error_message}"
+                log_to_file("WHATSAPP_FAILED", normalized_phone, f"{error_info}\nBODY: {message}")
+                status_val = 'Failed'
+            else:
+                log_to_file("WHATSAPP_SENT", normalized_phone, message)
+                status_val = 'Sent'
         except Exception as e:
-            logger.warning(f"WhatsApp Failed to {normalized_phone}: {e}")
+            err_str = str(e)
+            logger.warning(f"WhatsApp Failed to {normalized_phone}: {err_str}")
+            
+            # Identify common errors
+            log_tag = "WHATSAPP_EXCEPTION"
+            if "21608" in err_str:
+                log_tag = "WHATSAPP_TRIAL_ERROR"
+                print(f"--- WHATSAPP FAILED: Recipient {normalized_phone} not verified ---")
+            elif "sandbox" in err_str.lower():
+                log_tag = "WHATSAPP_SANDBOX_ERROR"
+                print(f"--- WHATSAPP FAILED: Sandbox session expired or not joined ---")
+
+            log_to_file(log_tag, normalized_phone, err_str)
             status_val = 'Failed'
 
     if app_user:
@@ -189,10 +263,11 @@ def send_whatsapp_notification(to_phone, message, app_user=None):
         )
     return status_val
 
-def trigger_all_notifications(user, title, message, channels=['In-App', 'Email', 'SMS', 'WhatsApp'], phone=None):
+def trigger_all_notifications(user, title, message, channels=['In-App', 'Email', 'SMS', 'WhatsApp'], phone=None, email_attachments=None):
     """
     Triggers notifications across multiple channels.
     'user' can be User or AppUser.
+    'email_attachments' should be a list of (filename, content, mimetype)
     """
     from django.contrib.auth.models import User
     from .models import AppUser
@@ -225,7 +300,7 @@ def trigger_all_notifications(user, title, message, channels=['In-App', 'Email',
                 # Try to extract Order ID and Amount from message
                 import re
                 oid_match = re.search(r'#(\d+)', message)
-                price_match = re.search(r'₹(\d+)', message)
+                price_match = re.search(r'Rs\.(\d+)', message)
                 
                 oid = oid_match.group(1) if oid_match else "Recent"
                 price = price_match.group(1) if price_match else "---"
@@ -235,7 +310,12 @@ def trigger_all_notifications(user, title, message, channels=['In-App', 'Email',
             else:
                 html_content = get_promotional_email(title, message)
                 
-            results['Email'] = send_email_notification(email, title, message, app_user=app_user, html_content=html_content)
+            results['Email'] = send_email_notification(
+                email, title, message, 
+                app_user=app_user, 
+                html_content=html_content,
+                attachments=email_attachments
+            )
         else:
             results['Email'] = 'Skipped'
 
