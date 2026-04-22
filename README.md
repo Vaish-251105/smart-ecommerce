@@ -1,7 +1,7 @@
 # 🛒 Bloom & Buy - Smart AI E-commerce Platform
 
-[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen?style=for-the-badge)](https://smart-ecommerce-frontend.onrender.com)
-[![Backend API](https://img.shields.io/badge/API-Reference-blue?style=for-the-badge)](https://smart-ecommerce-backend.onrender.com/api)
+[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen?style=for-the-badge)](https://smart-ecommerce-frontend-vaish.onrender.com)
+[![Backend API](https://img.shields.io/badge/API-Reference-blue?style=for-the-badge)](https://smart-ecommerce-backend-vaish.onrender.com/api)
 [![Status](https://img.shields.io/badge/Deployment-Success-orange?style=for-the-badge)](https://render.com)
 
 A high-end, production-ready, full-stack E-commerce ecosystem. Powered by **Django REST Framework** and **React (Vite)**, featuring AI-driven customer support and a multi-channel notification mesh.
@@ -12,9 +12,9 @@ A high-end, production-ready, full-stack E-commerce ecosystem. Powered by **Djan
 
 | Component | URL |
 |-----------|-----|
-| **Frontend (Live)** | [https://smart-ecommerce-frontend.onrender.com](https://smart-ecommerce-frontend.onrender.com) |
-| **Backend API** | [https://smart-ecommerce-backend.onrender.com](https://smart-ecommerce-backend.onrender.com) |
-| **Admin Panel** | [https://smart-ecommerce-backend.onrender.com/admin](https://smart-ecommerce-backend.onrender.com/admin) |
+| **Frontend (Live)** | [https://smart-ecommerce-frontend-vaish.onrender.com](https://smart-ecommerce-frontend-vaish.onrender.com) |
+| **Backend API** | [https://smart-ecommerce-backend-vaish.onrender.com](https://smart-ecommerce-backend-vaish.onrender.com) |
+| **Admin Panel** | [https://smart-ecommerce-backend-vaish.onrender.com/admin](https://smart-ecommerce-backend-vaish.onrender.com/admin) |
 
 ---
 
@@ -40,7 +40,7 @@ A high-end, production-ready, full-stack E-commerce ecosystem. Powered by **Djan
 
 ## 🏗 Technology Stack
 
-- **Backend:** Python 3.11, Django 6.x, DRF, PostgreSQL (Production) / SQLite (Dev)
+- **Backend:** Python 3.11, Django 5.1.x, DRF, PostgreSQL (Production) / SQLite (Dev)
 - **Frontend:** React 19, Vite, Axios, React-Router-Dom, Recharts
 - **DevOps:** Render (PaaS), GitHub Actions, WhiteNoise (Static serving)
 - **APIs:** OpenAI, Twilio, Razorpay
