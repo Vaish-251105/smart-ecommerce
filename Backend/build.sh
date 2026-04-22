@@ -3,10 +3,10 @@
 set -o errexit
 
 echo "Upgrading pip and installing core build dependencies..."
-pip install --upgrade pip setuptools wheel
+python -m pip install --upgrade pip setuptools wheel
 
 echo "Installing requirements..."
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 
 echo "Collecting static files..."
 python manage.py collectstatic --no-input
