@@ -11,12 +11,9 @@ if (!clientId) {
 
 createRoot(document.getElementById('root')).render(
     <StrictMode>
-        {clientId ? (
-            <GoogleOAuthProvider clientId={clientId}>
-                <App />
-            </GoogleOAuthProvider>
-        ) : (
+        {/* We always wrap in GoogleOAuthProvider to avoid context issues, using a placeholder if empty */}
+        <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || "placeholder-id"}>
             <App />
-        )}
+        </GoogleOAuthProvider>
     </StrictMode>,
 )

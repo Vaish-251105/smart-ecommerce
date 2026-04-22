@@ -79,8 +79,8 @@ const LoginPage = () => {
 
     const handleGoogleLogin = () => {
         const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-        if (!clientId) {
-            toast.error('Google Sign-In requires VITE_GOOGLE_CLIENT_ID to be set in frontend .env.');
+        if (!clientId || clientId === "placeholder-id") {
+            toast.error('Google Sign-In is not configured. Please add VITE_GOOGLE_CLIENT_ID to your environment.');
             return;
         }
         handleGoogleLoginHook();
