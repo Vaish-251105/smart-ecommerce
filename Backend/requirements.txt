@@ -11,3 +11,7 @@ openai==1.61.1
 twilio==9.3.2
 razorpay==2.0.1
 dj-database-url
+django-filter
+djangorestframework-simplejwt
+pillow
+requests
